@@ -30,7 +30,7 @@ CONFIG_PLANILHAS = {
     },
 }
 
-st.set_page_config(page_title="Dashboard Energético", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="Acompanhamento Gerencial PIE ROraima", page_icon="⚡", layout="wide")
 
 st.markdown("""
 <style>
@@ -737,7 +737,7 @@ def main():
             unsafe_allow_html=True
         )
 
-    st.markdown("# ⚡ Dashboard Energético — RR")
+    st.markdown("# ⚡ Acompanhamento Gerencial PIE Roraima")
     st.markdown("Amajari &nbsp;|&nbsp; Pacaraima &nbsp;|&nbsp; Uiramutã", unsafe_allow_html=True)
     st.markdown("---")
 
