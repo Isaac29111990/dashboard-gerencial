@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import requests
 import io
 import unicodedata
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime # Importar datetime para parsear strings de data
 
 LINK_ENERGIA = "https://usinaxavantes-my.sharepoint.com/:x:/g/personal/jefferson_ferreira_usinaxavantes_onmicrosoft_com/IQDdqWDpJPZzS5sWsTULHWMPAaPbvF6rFiA99uybNJx7zh4?e=iDHkEG"
 LINK_CONSUMO = "https://usinaxavantes-my.sharepoint.com/:x:/g/personal/jefferson_ferreira_usinaxavantes_onmicrosoft_com/IQDKVJdv3LvzQY4AjhJiPbiZAYzb7lg5BPZK9-O52ctFqq4?e=RboNX9"
@@ -426,7 +426,6 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
     resumo_atual = {}
     resumo_com_compra = {}
 
-    # Inicializa st.session_state para armazenar dados da autonomia para a calculadora
     if 'autonomia_data_for_calc' not in st.session_state:
         st.session_state['autonomia_data_for_calc'] = {}
 
@@ -434,7 +433,7 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
 
     for nome, cfg in CONFIG_PLANILHAS.items():
         cor               = UNIDADES[nome]["cor"]
-        icone             = UNIDADES[nome]["icone"] # Acesso direto ao ícone
+        icone             = UNIDADES[nome]["icone"]
         dias_antecedencia = cfg["dias_antecedencia"]
 
         if nome not in dados:
@@ -574,12 +573,13 @@ def calculadora():
     st.markdown("<hr class='separador'>", unsafe_allow_html=True)
     resultados = {}
 
-    # Acessa os dados de autonomia do session_state
     autonomia_data = st.session_state.get('autonomia_data_for_calc', {})
+
+    # Lista para coletar todas as datas de compra válidas
+    todas_datas_compra = []
 
     for uk in ["Amajari", "Pacaraima"]:
         cor   = UNIDADES[uk]["cor"]
-        # CORREÇÃO AQUI: Acessar o ícone diretamente
         icone = UNIDADES[uk]["icone"] 
         st.markdown(
             f"<span class='badge-unidade' style='background:{cor}22; color:{cor}; border:1px solid {cor}44;'>"
@@ -615,6 +615,14 @@ def calculadora():
                 unsafe_allow_html=True
             )
         resultados[uk] = {"preco_litro": preco, "volume": vol, "valor_total": total}
+
+        # Coleta a data de compra para Amajari e Pacaraima
+        if uk in autonomia_data:
+            data_limite_total = autonomia_data[uk].get("data_limite_total")
+            if data_limite_total:
+                data_da_compra = data_limite_total - timedelta(days=4)
+                todas_datas_compra.append(data_da_compra)
+
         st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
     cor   = UNIDADES["Uiramutã"]["cor"]
@@ -686,6 +694,13 @@ def calculadora():
         resultados["Uiramutã_CIF"] = {"preco_litro": preco_uiramuta, "volume": volume_uiramuta, "valor_total": total_uiramuta}
         resultados["Uiramutã_FOB"] = {"preco_litro": 0.0, "volume": 0.0, "valor_total": 0.0}
 
+    # Coleta a data de compra para Uiramutã (se selecionado)
+    if "Uiramutã" in autonomia_data and (tipo_uiramuta == "FOB" or tipo_uiramuta == "CIF"):
+        data_limite_total = autonomia_data["Uiramutã"].get("data_limite_total")
+        if data_limite_total:
+            data_da_compra = data_limite_total - timedelta(days=4)
+            todas_datas_compra.append(data_da_compra)
+
     st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
     total_geral = sum(r["valor_total"] for r in resultados.values())
@@ -702,10 +717,17 @@ def calculadora():
 
     with st.expander("📋 Ver resumo detalhado"):
         rows = []
+
+        # Encontra a menor data de compra entre todas as coletadas
+        menor_data_compra_str = "—"
+        if todas_datas_compra:
+            menor_data_compra = min(todas_datas_compra)
+            menor_data_compra_str = menor_data_compra.strftime("%d/%m/%Y")
+
         # Adiciona Amajari e Pacaraima
         for uk_key in ["Amajari", "Pacaraima"]:
             unit_name = uk_key
-            tipo = "FOB" # Para Amajari e Pacaraima, o tipo é sempre FOB
+            tipo = "FOB"
 
             plog_val = PLOG.get(uk_key, "—")
             if plog_val != "—":
@@ -715,14 +737,6 @@ def calculadora():
             volume = resultados[uk_key]['volume']
             valor_total = resultados[uk_key]['valor_total']
 
-            data_compra_str = "—"
-            autonomia_unit_key = unit_name
-            if autonomia_unit_key in autonomia_data:
-                data_limite_total = autonomia_data[autonomia_unit_key].get("data_limite_total")
-                if data_limite_total:
-                    data_da_compra = data_limite_total - timedelta(days=4)
-                    data_compra_str = data_da_compra.strftime("%d/%m/%Y")
-
             rows.append({
                 "Unidade": unit_name,
                 "Tipo": tipo,
@@ -730,24 +744,16 @@ def calculadora():
                 "Preço/L (R$)": fmt_br(preco_litro, 4),
                 "Volume (L)": fmt_br(volume, 0),
                 "Total (R$)": fmt_br(valor_total, 2),
-                "Data da Compra": data_compra_str
+                "Data da Compra": menor_data_compra_str # Aplica a menor data
             })
 
         # Adiciona Uiramutã (apenas o tipo selecionado)
-        if preco_uiramuta is not None: # Se algum tipo de Uiramutã foi calculado
+        if preco_uiramuta is not None:
             unit_name = "Uiramutã"
 
             plog_val = PLOG.get(plog_uiramuta_key, "—")
             if plog_val != "—":
                 plog_val = fmt_br(plog_val, 4)
-
-            data_compra_str = "—"
-            autonomia_unit_key = "Uiramutã" # Sempre "Uiramutã" para buscar no session_state
-            if autonomia_unit_key in autonomia_data:
-                data_limite_total = autonomia_data[autonomia_unit_key].get("data_limite_total")
-                if data_limite_total:
-                    data_da_compra = data_limite_total - timedelta(days=4)
-                    data_compra_str = data_da_compra.strftime("%d/%m/%Y")
 
             rows.append({
                 "Unidade": unit_name,
@@ -756,14 +762,14 @@ def calculadora():
                 "Preço/L (R$)": fmt_br(preco_uiramuta, 4),
                 "Volume (L)": fmt_br(volume_uiramuta, 0),
                 "Total (R$)": fmt_br(total_uiramuta, 2),
-                "Data da Compra": data_compra_str
+                "Data da Compra": menor_data_compra_str # Aplica a menor data
             })
 
         # Adiciona a linha do TOTAL
         rows.append({
             "Unidade": "TOTAL", "Tipo": "—", "Plog (R$)": "—",
             "Preço/L (R$)": "—", "Volume (L)": "—", "Total (R$)": fmt_br(total_geral, 2),
-            "Data da Compra": "—"
+            "Data da Compra": menor_data_compra_str if menor_data_compra_str != "—" else "—" # Total também usa a menor data
         })
 
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
