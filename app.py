@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import requests
 import io
 import unicodedata
-from datetime import date, timedelta, datetime # Importar datetime para parsear strings de data
+from datetime import date, timedelta, datetime
 
 LINK_ENERGIA = "https://usinaxavantes-my.sharepoint.com/:x:/g/personal/jefferson_ferreira_usinaxavantes_onmicrosoft_com/IQDdqWDpJPZzS5sWsTULHWMPAaPbvF6rFiA99uybNJx7zh4?e=iDHkEG"
 LINK_CONSUMO = "https://usinaxavantes-my.sharepoint.com/:x:/g/personal/jefferson_ferreira_usinaxavantes_onmicrosoft_com/IQDKVJdv3LvzQY4AjhJiPbiZAYzb7lg5BPZK9-O52ctFqq4?e=RboNX9"
@@ -572,10 +572,10 @@ def calculadora():
     )
     st.markdown("<hr class='separador'>", unsafe_allow_html=True)
     resultados = {}
+    observacoes = {} # Dicionário para armazenar as observações
 
     autonomia_data = st.session_state.get('autonomia_data_for_calc', {})
 
-    # Lista para coletar todas as datas de compra válidas
     todas_datas_compra = []
 
     for uk in ["Amajari", "Pacaraima"]:
@@ -616,7 +616,9 @@ def calculadora():
             )
         resultados[uk] = {"preco_litro": preco, "volume": vol, "valor_total": total}
 
-        # Coleta a data de compra para Amajari e Pacaraima
+        # Campo de observação para a unidade
+        observacoes[uk] = st.text_area(f"Observação para {uk}", key=f"obs_{uk}", height=50)
+
         if uk in autonomia_data:
             data_limite_total = autonomia_data[uk].get("data_limite_total")
             if data_limite_total:
@@ -641,6 +643,7 @@ def calculadora():
     volume_uiramuta = None
     total_uiramuta = None
     plog_uiramuta_key = None
+    obs_uiramuta = "" # Inicializa a observação para Uiramutã
 
     if tipo_uiramuta == "FOB":
         st.markdown(
@@ -694,7 +697,10 @@ def calculadora():
         resultados["Uiramutã_CIF"] = {"preco_litro": preco_uiramuta, "volume": volume_uiramuta, "valor_total": total_uiramuta}
         resultados["Uiramutã_FOB"] = {"preco_litro": 0.0, "volume": 0.0, "valor_total": 0.0}
 
-    # Coleta a data de compra para Uiramutã (se selecionado)
+    # Campo de observação para Uiramutã (aplica-se ao tipo selecionado)
+    obs_uiramuta = st.text_area(f"Observação para Uiramutã ({tipo_uiramuta})", key=f"obs_Uiramuta_{tipo_uiramuta}", height=50)
+    observacoes["Uiramutã"] = obs_uiramuta # Armazena a observação para Uiramutã
+
     if "Uiramutã" in autonomia_data and (tipo_uiramuta == "FOB" or tipo_uiramuta == "CIF"):
         data_limite_total = autonomia_data["Uiramutã"].get("data_limite_total")
         if data_limite_total:
@@ -718,13 +724,11 @@ def calculadora():
     with st.expander("📋 Ver resumo detalhado"):
         rows = []
 
-        # Encontra a menor data de compra entre todas as coletadas
         menor_data_compra_str = "—"
         if todas_datas_compra:
             menor_data_compra = min(todas_datas_compra)
             menor_data_compra_str = menor_data_compra.strftime("%d/%m/%Y")
 
-        # Adiciona Amajari e Pacaraima
         for uk_key in ["Amajari", "Pacaraima"]:
             unit_name = uk_key
             tipo = "FOB"
@@ -736,6 +740,7 @@ def calculadora():
             preco_litro = resultados[uk_key]['preco_litro']
             volume = resultados[uk_key]['volume']
             valor_total = resultados[uk_key]['valor_total']
+            obs = observacoes.get(uk_key, "—") # Pega a observação da unidade
 
             rows.append({
                 "Unidade": unit_name,
@@ -744,16 +749,18 @@ def calculadora():
                 "Preço/L (R$)": fmt_br(preco_litro, 4),
                 "Volume (L)": fmt_br(volume, 0),
                 "Total (R$)": fmt_br(valor_total, 2),
-                "Data da Compra": menor_data_compra_str # Aplica a menor data
+                "Data da Compra": menor_data_compra_str,
+                "Observação": obs # Adiciona a observação
             })
 
-        # Adiciona Uiramutã (apenas o tipo selecionado)
         if preco_uiramuta is not None:
             unit_name = "Uiramutã"
 
             plog_val = PLOG.get(plog_uiramuta_key, "—")
             if plog_val != "—":
                 plog_val = fmt_br(plog_val, 4)
+
+            obs = observacoes.get("Uiramutã", "—") # Pega a observação de Uiramutã
 
             rows.append({
                 "Unidade": unit_name,
@@ -762,14 +769,15 @@ def calculadora():
                 "Preço/L (R$)": fmt_br(preco_uiramuta, 4),
                 "Volume (L)": fmt_br(volume_uiramuta, 0),
                 "Total (R$)": fmt_br(total_uiramuta, 2),
-                "Data da Compra": menor_data_compra_str # Aplica a menor data
+                "Data da Compra": menor_data_compra_str,
+                "Observação": obs # Adiciona a observação
             })
 
-        # Adiciona a linha do TOTAL
         rows.append({
             "Unidade": "TOTAL", "Tipo": "—", "Plog (R$)": "—",
             "Preço/L (R$)": "—", "Volume (L)": "—", "Total (R$)": fmt_br(total_geral, 2),
-            "Data da Compra": menor_data_compra_str if menor_data_compra_str != "—" else "—" # Total também usa a menor data
+            "Data da Compra": menor_data_compra_str if menor_data_compra_str != "—" else "—",
+            "Observação": "—" # Observação para o total não faz sentido
         })
 
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
