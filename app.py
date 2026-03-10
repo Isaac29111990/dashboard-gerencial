@@ -8,6 +8,7 @@ from datetime import date, timedelta, datetime
 
 LINK_ENERGIA = "https://usinaxavantes-my.sharepoint.com/:x:/g/personal/jefferson_ferreira_usinaxavantes_onmicrosoft_com/IQDdqWDpJPZzS5sWsTULHWMPAaPbvF6rFiA99uybNJx7zh4?e=iDHkEG"
 LINK_CONSUMO = "https://usinaxavantes-my.sharepoint.com/:x:/g/personal/jefferson_ferreira_usinaxavantes_onmicrosoft_com/IQDKVJdv3LvzQY4AjhJiPbiZAYzb7lg5BPZK9-O52ctFqq4?e=RboNX9"
+LINK_PRECOS = LINK_CONSUMO
 
 CONFIG_PLANILHAS = {
     "Amajari": {
@@ -15,18 +16,22 @@ CONFIG_PLANILHAS = {
         "col_data_c": "DATA", "col_consumo": "Consumo Calculado",
         "col_data_e": "DATA", "col_energia": "ENERGIA GERADA TOTAL MWh",
         "dias_antecedencia": 2,
+        "aba_preco": "Preço_Amajari",
     },
     "Pacaraima": {
         "aba_consumo": "Pacaraima", "aba_energia": "Energia_Pacaraima",
         "col_data_c": "DATA", "col_consumo": "Consumo Calculado",
         "col_data_e": "DATA", "col_energia": "ENERGIA GERADA TOTAL MWh",
         "dias_antecedencia": 2,
+        "aba_preco": "Preço_Pacaraima",
     },
     "Uiramutã": {
         "aba_consumo": "Uiramutã", "aba_energia": "Energia_Uiramutã",
         "col_data_c": "DATA", "col_consumo": "Consumo Calculado",
         "col_data_e": "Data", "col_energia": "Energia Gerada MWh",
         "dias_antecedencia": 3,
+        "aba_preco_fob": "Preço_Uiramutã_FOB",
+        "aba_preco_cif": "Preço_Uiramutã_CIF",
     },
 }
 
@@ -130,6 +135,45 @@ def ler_aba_excel(xl_file, sheet_name, col_data_alvo, col_valor_alvo):
     df = df.dropna().sort_values("data").reset_index(drop=True)
     return df, None
 
+def ler_aba_preco_excel(xl_file, sheet_name):
+    df_raw = pd.read_excel(xl_file, sheet_name=sheet_name, header=None, nrows=20)
+    header_row = None
+    cols_alvo = ["DATA", "PREÇO MÉDIO", "PREÇO FINAL", "PREÇO DESCONTO"]
+    norm_cols_alvo = [norm(c) for c in cols_alvo]
+
+    for i, row in df_raw.iterrows():
+        valores = [norm(str(v)) for v in row.values]
+        if all(c in valores for c in norm_cols_alvo):
+            header_row = i
+            break
+
+    if header_row is None:
+        return None, f"Cabeçalho de preços não encontrado na aba '{sheet_name}'. Colunas esperadas: {cols_alvo}"
+
+    df = pd.read_excel(xl_file, sheet_name=sheet_name, header=header_row)
+
+    col_data_found    = encontrar_coluna(df.columns, "DATA")
+    col_pm_found      = encontrar_coluna(df.columns, "PREÇO MÉDIO")
+    col_pf_found      = encontrar_coluna(df.columns, "PREÇO FINAL")
+    col_desc_found    = encontrar_coluna(df.columns, "PREÇO DESCONTO")
+
+    if not all([col_data_found, col_pm_found, col_pf_found, col_desc_found]):
+        return None, f"Algumas colunas de preço não encontradas na aba '{sheet_name}'. Disponíveis: {list(df.columns)}"
+
+    df = df[[col_data_found, col_pm_found, col_pf_found, col_desc_found]].copy()
+    df.columns = ["data", "preco_medio", "preco_final", "preco_desconto"]
+    df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
+    df["preco_medio"]    = pd.to_numeric(df["preco_medio"], errors="coerce")
+    df["preco_final"]    = pd.to_numeric(df["preco_final"], errors="coerce")
+    df["preco_desconto"] = pd.to_numeric(df["preco_desconto"], errors="coerce")
+    df = df.dropna(subset=["data", "preco_medio", "preco_final", "preco_desconto"]).sort_values("data", ascending=False).reset_index(drop=True)
+
+    if df.empty:
+        return None, f"Nenhum dado válido encontrado na aba '{sheet_name}' após processamento."
+
+    # Retorna apenas a linha mais recente
+    return df.iloc[0], None
+
 
 @st.cache_data(ttl=300)
 def carregar_dados():
@@ -137,12 +181,16 @@ def carregar_dados():
     erros = []
     xl_consumo = None
     xl_energia = None
+    xl_precos  = None
+
     try:
         r = requests.get(converter_link(LINK_CONSUMO), timeout=20)
         r.raise_for_status()
         xl_consumo = pd.ExcelFile(io.BytesIO(r.content))
+        xl_precos = xl_consumo
     except Exception as e:
-        erros.append(f"Erro ao baixar planilha de consumo: {e}")
+        erros.append(f"Erro ao baixar planilha de consumo/preços: {e}")
+
     try:
         r = requests.get(converter_link(LINK_ENERGIA), timeout=20)
         r.raise_for_status()
@@ -150,9 +198,12 @@ def carregar_dados():
     except Exception as e:
         erros.append(f"Erro ao baixar planilha de energia: {e}")
 
+    precos_carregados = {}
+
     for unidade, cfg in CONFIG_PLANILHAS.items():
         df_consumo = None
         df_energia = None
+
         if xl_consumo is not None:
             try:
                 df_c, erro = ler_aba_excel(xl_consumo, cfg["aba_consumo"],
@@ -188,7 +239,42 @@ def carregar_dados():
             df_energia["consumo"]            = None
             df_energia["consumo_especifico"] = None
             dados[unidade] = df_energia
-    return dados, erros
+
+        if xl_precos is not None:
+            if unidade in ["Amajari", "Pacaraima"]:
+                aba_preco = cfg.get("aba_preco")
+                if aba_preco:
+                    try:
+                        preco_data, erro = ler_aba_preco_excel(xl_precos, aba_preco)
+                        if erro:
+                            erros.append(f"{unidade} — Preços: {erro}")
+                        else:
+                            precos_carregados[unidade] = preco_data
+                    except Exception as e:
+                        erros.append(f"{unidade} — Aba de preços '{aba_preco}': {e}")
+            elif unidade == "Uiramutã":
+                aba_preco_fob = cfg.get("aba_preco_fob")
+                aba_preco_cif = cfg.get("aba_preco_cif")
+                if aba_preco_fob:
+                    try:
+                        preco_fob_data, erro = ler_aba_preco_excel(xl_precos, aba_preco_fob)
+                        if erro:
+                            erros.append(f"{unidade} — Preços FOB: {erro}")
+                        else:
+                            precos_carregados["Uiramutã_FOB"] = preco_fob_data
+                    except Exception as e:
+                        erros.append(f"{unidade} — Aba de preços FOB '{aba_preco_fob}': {e}")
+                if aba_preco_cif:
+                    try:
+                        preco_cif_data, erro = ler_aba_preco_excel(xl_precos, aba_preco_cif)
+                        if erro:
+                            erros.append(f"{unidade} — Preços CIF: {erro}")
+                        else:
+                            precos_carregados["Uiramutã_CIF"] = preco_cif_data
+                    except Exception as e:
+                        erros.append(f"{unidade} — Aba de preços CIF '{aba_preco_cif}': {e}")
+
+    return dados, erros, precos_carregados
 
 
 def gerar_periodos(df, tipo):
@@ -561,7 +647,7 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
 # ─────────────────────────────────────────
 # CALCULADORA
 # ─────────────────────────────────────────
-def calculadora():
+def calculadora(precos_carregados):
     st.markdown("## 🧮 Calculadora de Compra de Combustível")
     st.markdown(
         f"<p style='color:#8888aa; font-size:13px; margin-top:-10px;'>"
@@ -572,7 +658,7 @@ def calculadora():
     )
     st.markdown("<hr class='separador'>", unsafe_allow_html=True)
     resultados = {}
-    observacoes = {} # Dicionário para armazenar as observações
+    observacoes = {}
 
     autonomia_data = st.session_state.get('autonomia_data_for_calc', {})
 
@@ -580,15 +666,36 @@ def calculadora():
 
     for uk in ["Amajari", "Pacaraima"]:
         cor   = UNIDADES[uk]["cor"]
-        icone = UNIDADES[uk]["icone"] 
+        icone = UNIDADES[uk]["icone"]
+
+        preco_info = precos_carregados.get(uk, {})
+        pm_planilha = preco_info.get("preco_medio", 0.0)
+        pf_planilha = preco_info.get("preco_final", 0.0)
+        pd_planilha = preco_info.get("preco_desconto", 0.0) # Preço Desconto
+        data_preco_planilha = preco_info.get("data")
+
         st.markdown(
             f"<span class='badge-unidade' style='background:{cor}22; color:{cor}; border:1px solid {cor}44;'>"
             f"{icone} {uk} &nbsp;<small style='opacity:0.7'>Plog: R$ {fmt_br(PLOG[uk], 4)}</small></span>",
             unsafe_allow_html=True
         )
+
+        if data_preco_planilha:
+            st.markdown(f"<p style='color:#8888aa; font-size:12px; margin-top:-8px;'>Último preço carregado em: {data_preco_planilha.strftime('%d/%m/%Y')}</p>", unsafe_allow_html=True)
+        else:
+            st.warning(f"Não foi possível carregar os preços mais recentes para {uk}.")
+
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            pm = st.number_input("Pm (R$/L)", min_value=0.0, step=0.001, format="%.4f", key=f"pm_{uk}")
+            # Exibir o Preço Médio da planilha
+            st.markdown(
+                f"<div style='background:#1e1e2e; border:1px solid #2a2a4a; border-radius:8px; "
+                f"padding:10px 14px; margin-top:26px;'>"
+                f"<div style='color:#8888aa; font-size:11px;'>Preço Médio (Pm)</div>"
+                f"<div style='color:#e0e0f0; font-size:18px; font-weight:bold;'>R$ {fmt_br(pm_planilha, 4)}</div>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
         with c2:
             st.markdown(
                 f"<div style='background:#1e1e2e; border:1px solid #2a2a4a; border-radius:8px; "
@@ -602,7 +709,8 @@ def calculadora():
             vol_default = autonomia_data.get(uk, {}).get("vol_comprado", 0.0)
             vol = st.number_input("Volume (L)", min_value=0.0, step=1.0, format="%.0f", key=f"vol_{uk}", value=vol_default)
         with c4:
-            preco = pm + PLOG[uk] + BOMBEAMENTO - DESCONTO
+            # Usar o Preço Desconto da planilha para o cálculo para Amajari e Pacaraima
+            preco = pd_planilha 
             total = preco * vol
             st.markdown(
                 f"<div style='background:{cor}15; border:1px solid {cor}44; border-radius:10px; "
@@ -614,9 +722,8 @@ def calculadora():
                 f"</div>",
                 unsafe_allow_html=True
             )
-        resultados[uk] = {"preco_litro": preco, "volume": vol, "valor_total": total}
+        resultados[uk] = {"preco_litro": preco, "volume": vol, "valor_total": total, "preco_medio_planilha": pm_planilha, "preco_final_planilha": pf_planilha, "preco_desconto_planilha": pd_planilha}
 
-        # Campo de observação para a unidade
         observacoes[uk] = st.text_area(f"Observação para {uk}", key=f"obs_{uk}", height=50)
 
         if uk in autonomia_data:
@@ -637,26 +744,58 @@ def calculadora():
 
     tipo_uiramuta = st.radio("Selecione o tipo para Uiramutã:", ["FOB", "CIF"], key="tipo_uiramuta_calc")
 
-    pm_u = st.number_input("Pm (R$/L)", min_value=0.0, step=0.001, format="%.4f", key="pm_Uiramuta")
+    pm_u_planilha = 0.0
+    pf_u_planilha = 0.0
+    pd_u_planilha = 0.0 # Preço Desconto para Uiramutã
+    data_preco_u_planilha = None
+
+    # Puxar os dados de preço para o tipo selecionado
+    if tipo_uiramuta == "FOB":
+        preco_info_u = precos_carregados.get("Uiramutã_FOB", {})
+        pm_u_planilha = preco_info_u.get("preco_medio", 0.0)
+        pf_u_planilha = preco_info_u.get("preco_final", 0.0)
+        pd_u_planilha = preco_info_u.get("preco_desconto", 0.0)
+        data_preco_u_planilha = preco_info_u.get("data")
+    elif tipo_uiramuta == "CIF":
+        preco_info_u = precos_carregados.get("Uiramutã_CIF", {})
+        pm_u_planilha = preco_info_u.get("preco_medio", 0.0)
+        pf_u_planilha = preco_info_u.get("preco_final", 0.0)
+        pd_u_planilha = preco_info_u.get("preco_desconto", 0.0)
+        data_preco_u_planilha = preco_info_u.get("data")
+
+    if data_preco_u_planilha:
+        st.markdown(f"<p style='color:#8888aa; font-size:12px; margin-top:-8px;'>Último preço carregado em: {data_preco_u_planilha.strftime('%d/%m/%Y')}</p>", unsafe_allow_html=True)
+    else:
+        st.warning(f"Não foi possível carregar os preços mais recentes para Uiramutã ({tipo_uiramuta}).")
+
+    # Exibir o Preço Médio da planilha para Uiramutã (sempre)
+    st.markdown(
+        f"<div style='background:#1e1e2e; border:1px solid #2a2a4a; border-radius:8px; "
+        f"padding:10px 14px; margin-top:26px;'>"
+        f"<div style='color:#8888aa; font-size:11px;'>Preço Médio (Pm)</div>"
+        f"<div style='color:#e0e0f0; font-size:18px; font-weight:bold;'>R$ {fmt_br(pm_u_planilha, 4)}</div>"
+        f"</div>",
+        unsafe_allow_html=True
+    )
 
     preco_uiramuta = None
     volume_uiramuta = None
     total_uiramuta = None
     plog_uiramuta_key = None
-    obs_uiramuta = "" # Inicializa a observação para Uiramutã
+    obs_uiramuta = ""
 
     if tipo_uiramuta == "FOB":
         st.markdown(
             f"<div style='background:#22c55e10; border:1px solid #22c55e33; border-radius:10px; padding:14px; margin-top:8px;'>"
             f"<div style='color:#22c55e; font-size:12px; font-weight:700; margin-bottom:6px;'>"
             f"📦 FOB — Plog: R$ {fmt_br(PLOG['Uiramutã_FOB'], 4)}</div>"
-            f"<div style='color:#8888aa; font-size:11px;'>Pm + Plog_FOB + Bombeamento − Desconto</div>"
+            f"<div style='color:#8888aa; font-size:11px;'>Preço Desconto da planilha</div>" # Alterado para Preço Desconto
             f"</div>",
             unsafe_allow_html=True
         )
         vol_fob_default = autonomia_data.get("Uiramutã", {}).get("vol_comprado", 0.0)
-        volume_uiramuta   = st.number_input("Volume FOB (L)", min_value=0.0, step=1.0, format="%.0f", key="vol_Uiramuta_FOB", value=vol_fob_default)
-        preco_uiramuta = pm_u + PLOG["Uiramutã_FOB"] + BOMBEAMENTO - DESCONTO
+        volume_uiramuta   = st.number_input("Volume FOB (L)", min_value=0.0, step=1.0, format="%.0f", key="vol_Uiramutã_FOB", value=vol_fob_default)
+        preco_uiramuta = pd_u_planilha # Usar o Preço Desconto para Uiramutã FOB
         total_uiramuta = preco_uiramuta * volume_uiramuta
         plog_uiramuta_key = 'Uiramutã_FOB'
         st.markdown(
@@ -668,21 +807,21 @@ def calculadora():
             f"</div>",
             unsafe_allow_html=True
         )
-        resultados["Uiramutã_FOB"] = {"preco_litro": preco_uiramuta, "volume": volume_uiramuta, "valor_total": total_uiramuta}
-        resultados["Uiramutã_CIF"] = {"preco_litro": 0.0, "volume": 0.0, "valor_total": 0.0}
+        resultados["Uiramutã_FOB"] = {"preco_litro": preco_uiramuta, "volume": volume_uiramuta, "valor_total": total_uiramuta, "preco_medio_planilha": pm_u_planilha, "preco_final_planilha": pf_u_planilha, "preco_desconto_planilha": pd_u_planilha}
+        resultados["Uiramutã_CIF"] = {"preco_litro": 0.0, "volume": 0.0, "valor_total": 0.0, "preco_medio_planilha": 0.0, "preco_final_planilha": 0.0, "preco_desconto_planilha": 0.0}
 
     elif tipo_uiramuta == "CIF":
         st.markdown(
             f"<div style='background:#22c55e10; border:1px solid #22c55e33; border-radius:10px; padding:14px; margin-top:8px;'>"
             f"<div style='color:#22c55e; font-size:12px; font-weight:700; margin-bottom:6px;'>"
             f"🚚 CIF — Plog: R$ {fmt_br(PLOG['Uiramutã_CIF'], 4)}</div>"
-            f"<div style='color:#8888aa; font-size:11px;'>Pm + Plog_CIF + Bombeamento</div>"
+            f"<div style='color:#8888aa; font-size:11px;'>Preço Final da planilha</div>"
             f"</div>",
             unsafe_allow_html=True
         )
         vol_cif_default = autonomia_data.get("Uiramutã", {}).get("vol_comprado", 0.0)
-        volume_uiramuta   = st.number_input("Volume CIF (L)", min_value=0.0, step=1.0, format="%.0f", key="vol_Uiramuta_CIF", value=vol_cif_default)
-        preco_uiramuta = pm_u + PLOG["Uiramutã_CIF"] + BOMBEAMENTO
+        volume_uiramuta   = st.number_input("Volume CIF (L)", min_value=0.0, step=1.0, format="%.0f", key="vol_Uiramutã_CIF", value=vol_cif_default)
+        preco_uiramuta = pf_u_planilha # Usar o Preço Final diretamente da planilha para Uiramutã CIF
         total_uiramuta = preco_uiramuta * volume_uiramuta
         plog_uiramuta_key = 'Uiramutã_CIF'
         st.markdown(
@@ -694,12 +833,11 @@ def calculadora():
             f"</div>",
             unsafe_allow_html=True
         )
-        resultados["Uiramutã_CIF"] = {"preco_litro": preco_uiramuta, "volume": volume_uiramuta, "valor_total": total_uiramuta}
-        resultados["Uiramutã_FOB"] = {"preco_litro": 0.0, "volume": 0.0, "valor_total": 0.0}
+        resultados["Uiramutã_CIF"] = {"preco_litro": preco_uiramuta, "volume": volume_uiramuta, "valor_total": total_uiramuta, "preco_medio_planilha": pm_u_planilha, "preco_final_planilha": pf_u_planilha, "preco_desconto_planilha": pd_u_planilha}
+        resultados["Uiramutã_FOB"] = {"preco_litro": 0.0, "volume": 0.0, "valor_total": 0.0, "preco_medio_planilha": 0.0, "preco_final_planilha": 0.0, "preco_desconto_planilha": 0.0}
 
-    # Campo de observação para Uiramutã (aplica-se ao tipo selecionado)
-    obs_uiramuta = st.text_area(f"Observação para Uiramutã ({tipo_uiramuta})", key=f"obs_Uiramuta_{tipo_uiramuta}", height=50)
-    observacoes["Uiramutã"] = obs_uiramuta # Armazena a observação para Uiramutã
+    obs_uiramuta = st.text_area(f"Observação para Uiramutã ({tipo_uiramuta})", key=f"obs_Uiramutã_{tipo_uiramuta}", height=50)
+    observacoes["Uiramutã"] = obs_uiramuta
 
     if "Uiramutã" in autonomia_data and (tipo_uiramuta == "FOB" or tipo_uiramuta == "CIF"):
         data_limite_total = autonomia_data["Uiramutã"].get("data_limite_total")
@@ -733,51 +871,67 @@ def calculadora():
             unit_name = uk_key
             tipo = "FOB"
 
-            plog_val = PLOG.get(uk_key, "—")
-            if plog_val != "—":
-                plog_val = fmt_br(plog_val, 4)
+            # plog_val = PLOG.get(uk_key, "—") # Não será exibido no resumo
+            # if plog_val != "—":
+            #     plog_val = fmt_br(plog_val, 4)
 
-            preco_litro = resultados[uk_key]['preco_litro']
+            # preco_litro = resultados[uk_key]['preco_litro'] # Não será exibido no resumo
             volume = resultados[uk_key]['volume']
             valor_total = resultados[uk_key]['valor_total']
-            obs = observacoes.get(uk_key, "—") # Pega a observação da unidade
+            obs = observacoes.get(uk_key, "—")
+            # pm_calc = resultados[uk_key]['preco_medio_planilha'] # Não será exibido no resumo
+            # pf_calc = resultados[uk_key]['preco_final_planilha'] # Não será exibido no resumo
+            pd_calc = resultados[uk_key]['preco_desconto_planilha']
 
             rows.append({
                 "Unidade": unit_name,
                 "Tipo": tipo,
-                "Plog (R$)": plog_val,
-                "Preço/L (R$)": fmt_br(preco_litro, 4),
+                # "Plog (R$)": plog_val, # Removido
+                # "Preço Médio (R$)": fmt_br(pm_calc, 4), # Removido
+                # "Preço Final (R$)": fmt_br(pf_calc, 4), # Removido
+                "Preço Desconto (R$)": fmt_br(pd_calc, 4),
+                # "Preço/L Calculado (R$)": fmt_br(preco_litro, 4), # Removido
                 "Volume (L)": fmt_br(volume, 0),
                 "Total (R$)": fmt_br(valor_total, 2),
                 "Data da Compra": menor_data_compra_str,
-                "Observação": obs # Adiciona a observação
+                "Observação": obs
             })
 
         if preco_uiramuta is not None:
             unit_name = "Uiramutã"
 
-            plog_val = PLOG.get(plog_uiramuta_key, "—")
-            if plog_val != "—":
-                plog_val = fmt_br(plog_val, 4)
+            # plog_val = PLOG.get(plog_uiramuta_key, "—") # Não será exibido no resumo
+            # if plog_val != "—":
+            #     plog_val = fmt_br(plog_val, 4)
 
-            obs = observacoes.get("Uiramutã", "—") # Pega a observação de Uiramutã
+            obs = observacoes.get("Uiramutã", "—")
+            # pm_calc = resultados[f"Uiramutã_{tipo_uiramuta}"]['preco_medio_planilha'] # Não será exibido no resumo
+            pf_calc = resultados[f"Uiramutã_{tipo_uiramuta}"]['preco_final_planilha'] # Manter para Uiramutã CIF
+            pd_calc = resultados[f"Uiramutã_{tipo_uiramuta}"]['preco_desconto_planilha'] # Manter para Uiramutã FOB
+
+            # Determinar qual preço exibir no resumo para Uiramutã
+            preco_resumo_uiramuta = pd_calc if tipo_uiramuta == "FOB" else pf_calc
 
             rows.append({
                 "Unidade": unit_name,
                 "Tipo": tipo_uiramuta,
-                "Plog (R$)": plog_val,
-                "Preço/L (R$)": fmt_br(preco_uiramuta, 4),
+                # "Plog (R$)": plog_val, # Removido
+                # "Preço Médio (R$)": fmt_br(pm_calc, 4), # Removido
+                # "Preço Final (R$)": fmt_br(pf_calc, 4), # Removido
+                "Preço Desconto (R$)": fmt_br(preco_resumo_uiramuta, 4), # Exibe o preço usado no cálculo
+                # "Preço/L Calculado (R$)": fmt_br(preco_uiramuta, 4), # Removido
                 "Volume (L)": fmt_br(volume_uiramuta, 0),
                 "Total (R$)": fmt_br(total_uiramuta, 2),
                 "Data da Compra": menor_data_compra_str,
-                "Observação": obs # Adiciona a observação
+                "Observação": obs
             })
 
         rows.append({
-            "Unidade": "TOTAL", "Tipo": "—", "Plog (R$)": "—",
-            "Preço/L (R$)": "—", "Volume (L)": "—", "Total (R$)": fmt_br(total_geral, 2),
+            "Unidade": "TOTAL", "Tipo": "—",
+            "Preço Desconto (R$)": "—", # Não faz sentido para o total
+            "Volume (L)": "—", "Total (R$)": fmt_br(total_geral, 2),
             "Data da Compra": menor_data_compra_str if menor_data_compra_str != "—" else "—",
-            "Observação": "—" # Observação para o total não faz sentido
+            "Observação": "—"
         })
 
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
@@ -806,7 +960,7 @@ def main():
     st.markdown("Amajari &nbsp;|&nbsp; Pacaraima &nbsp;|&nbsp; Uiramutã", unsafe_allow_html=True)
     st.markdown("---")
 
-    dados, erros = carregar_dados()
+    dados, erros, precos_carregados = carregar_dados()
 
     if erros:
         with st.expander("⚠️ Avisos de carregamento"):
@@ -827,7 +981,7 @@ def main():
     ])
 
     with tab_calc:
-        calculadora()
+        calculadora(precos_carregados)
 
     if not dados:
         for tab in [tab_amajari, tab_pacaraima, tab_uiramuta, tab_autonomia]:
