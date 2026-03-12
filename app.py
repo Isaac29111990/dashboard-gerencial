@@ -427,19 +427,36 @@ def secao_unidade(nome, df, tipo_filtro, periodo):
 # ─────────────────────────────────────────
 # AUTONOMIA
 # ─────────────────────────────────────────
+# CORRIGIDO: Retorna 3 valores (horas, dias, data_hora_limite)
 def calcular_autonomia(estoque, estoque_geradores, media_energia, cons_esp, usar_seguranca=False):
     if not all([media_energia, cons_esp, media_energia > 0, cons_esp > 0]):
-        return None, None
-    gerador_dia = media_energia / 24
-    horas = (estoque / cons_esp) / gerador_dia
+        return None, None, None # Retorna None para horas, dias, data_hora_limite
+
+    gerador_dia = media_energia / 24 # MWh/hora
+
+    # Evitar divisão por zero se gerador_dia for 0
+    if gerador_dia == 0:
+        return 0.0, 0.0, datetime.now() # Se não há geração, autonomia é 0
+
+    horas_operacao = (estoque / cons_esp) / gerador_dia # Horas de operação
+
     if usar_seguranca:
-        horas = horas - estoque_geradores - 24 # Desconta estoque geradores e 24h de segurança
-    horas = max(horas, 0)
-    dias  = horas / 24
-    return horas, dias
+        horas_operacao = horas_operacao - estoque_geradores - 24 # Desconta estoque geradores e 24h de segurança
+
+    horas_operacao = max(horas_operacao, 0)
+    dias_operacao  = horas_operacao / 24
+
+    if horas_operacao == 0:
+        return 0.0, 0.0, datetime.now() # Se autonomia é 0, retorna a hora atual
+
+    # Calcula a data e hora limite
+    data_hora_limite = datetime.now() + timedelta(hours=horas_operacao)
+
+    return horas_operacao, dias_operacao, data_hora_limite
 
 
-def card_autonomia(titulo, horas, dias, cor, data_limite=None, data_carregamento=None):
+# MODIFICADO: card_autonomia para receber data_hora_limite e data_hora_carregamento
+def card_autonomia(titulo, horas, dias, cor, data_hora_limite=None, data_hora_carregamento=None):
     if horas is None:
         return (
             "<div style='background:#1e1e2e; border:1px solid #2a2a4a; border-radius:14px; "
@@ -449,8 +466,10 @@ def card_autonomia(titulo, horas, dias, cor, data_limite=None, data_carregamento
             "</div>"
         )
 
-    data_lim_str  = data_limite.strftime("%d/%m/%Y")       if data_limite       else "—"
-    data_carg_str = data_carregamento.strftime("%d/%m/%Y") if data_carregamento else "—"
+    data_lim_str  = data_hora_limite.strftime("%d/%m/%Y")       if data_hora_limite       else "—"
+    hora_lim_str  = data_hora_limite.strftime("%H:%M")          if data_hora_limite       else "—"
+    data_carg_str = data_hora_carregamento.strftime("%d/%m/%Y") if data_hora_carregamento else "—"
+    hora_carg_str = data_hora_carregamento.strftime("%H:%M")    if data_hora_carregamento else "—"
 
     html = (
         f"<div style='background:{cor}12; border:1px solid {cor}33; border-radius:14px; "
@@ -463,19 +482,22 @@ def card_autonomia(titulo, horas, dias, cor, data_limite=None, data_carregamento
         f"<div><div style='color:#8888aa; font-size:11px;'>Dias de Operação</div>"
         f"<div style='color:#e0e0f0; font-size:22px; font-weight:700;'>{fmt_br(dias, 1)} dias</div></div>"
         f"<div><div style='color:#8888aa; font-size:11px;'>Autonomia até</div>"
-        f"<div style='color:{cor}; font-size:22px; font-weight:700;'>{data_lim_str}</div></div>"
+        f"<div style='color:{cor}; font-size:22px; font-weight:700;'>{data_lim_str} {hora_lim_str}</div></div>" # Exibe data e hora
         f"<div><div style='color:#8888aa; font-size:11px;'>⚠️ Carregar até</div>"
-        f"<div style='color:#f97316; font-size:22px; font-weight:700;'>{data_carg_str}</div></div>"
+        f"<div style='color:#f97316; font-size:22px; font-weight:700;'>{data_carg_str} {hora_carg_str}</div></div>" # Exibe data e hora
         f"</div></div>"
     )
     return html
 
 
+# MODIFICADO: _render_resumo_html para colunas separadas de data e hora
 def _render_resumo_html(resumo_data, title_prefix):
     rows = []
     for nome, info in resumo_data.items():
-        aut   = info["data_limite"].strftime("%d/%m/%Y") if info["data_limite"]      else "—"
-        carg  = info["data_carga"].strftime("%d/%m/%Y")  if info["data_carga"]       else "—"
+        data_aut_str  = info["data_limite"].strftime("%d/%m/%Y") if info["data_limite"]      else "—"
+        hora_aut_str  = info["data_limite"].strftime("%H:%M")    if info["data_limite"]      else "—"
+        data_carg_str = info["data_carga"].strftime("%d/%m/%Y")  if info["data_carga"]       else "—"
+        hora_carg_str = info["data_carga"].strftime("%H:%M")     if info["data_carga"]       else "—"
         dias  = fmt_br(info["dias"], 1)                  if info["dias"] is not None else "—"
         horas = fmt_br(info["horas"], 1)                 if info["horas"] is not None else "—"
         estoque = fmt_br(info["estoque"], 0)             if info["estoque"] is not None else "—"
@@ -485,8 +507,10 @@ def _render_resumo_html(resumo_data, title_prefix):
             "Volume Estoque (L)": estoque,
             "Horas de Operação": horas,
             "Dias de Operação": dias,
-            "Autonomia até": aut,
-            "⚠️ Carregar até": carg,
+            "Data Autonomia": data_aut_str,
+            "Hora Autonomia": hora_aut_str,
+            "Data Carregar": data_carg_str,
+            "Hora Carregar": hora_carg_str,
         })
 
     if rows:
@@ -503,12 +527,12 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
         f"Baseado nas médias do período selecionado ({periodo_sel}).<br>"
         f"Gerador/hora = Média Energia / 24 &nbsp;|&nbsp; "
         f"Horas = (Estoque / Cons. Esp.) / Gerador/hora [− Estoque Geradores − 24h se segurança ativada]<br>"
-        f"Data Carregamento = Autonomia − 2 dias (Amajari/Pacaraima) &nbsp;|&nbsp; − 3 dias (Uiramutã)"
+        f"Data Carregamento = Autonomia − {CONFIG_PLANILHAS['Amajari']['dias_antecedencia']} dias (Amajari/Pacaraima) &nbsp;|&nbsp; − {CONFIG_PLANILHAS['Uiramutã']['dias_antecedencia']} dias (Uiramutã)"
         f"</p>",
         unsafe_allow_html=True
     )
 
-    hoje   = date.today()
+    agora = datetime.now()
     resumo_atual = {}
     resumo_com_compra = {}
 
@@ -585,40 +609,42 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
         st.markdown("<br>", unsafe_allow_html=True)
 
         # Cenário 1 — estoque atual
-        horas_atual, dias_atual = calcular_autonomia(
+        # CORRIGIDO: Agora espera 3 valores de retorno
+        horas_atual, dias_atual, data_hora_limite_atual = calcular_autonomia(
             estoque_atual_input, est_ger_efetivo, media_energia, media_cesp,
             usar_seguranca=usar_estoque_ger
         )
-        data_limite_atual       = (hoje + timedelta(days=dias_atual))                     if dias_atual is not None else None
-        data_carregamento_atual = (data_limite_atual - timedelta(days=dias_antecedencia)) if data_limite_atual      else None
+        # Calcula data_hora_carregamento_atual aqui
+        data_hora_carregamento_atual = (data_hora_limite_atual - timedelta(days=dias_antecedencia)) if data_hora_limite_atual else None
 
         # Cenário 2 — estoque + compra
-        horas_total, dias_total = calcular_autonomia(
+        # CORRIGIDO: Agora espera 3 valores de retorno
+        horas_total, dias_total, data_hora_limite_total = calcular_autonomia(
             estoque_atual_input + vol_comprado, est_ger_efetivo, media_energia, media_cesp,
             usar_seguranca=usar_estoque_ger
         )
-        data_limite_total       = (hoje + timedelta(days=dias_total))                     if dias_total is not None else None
-        data_carregamento_total = (data_limite_total - timedelta(days=dias_antecedencia)) if data_limite_total      else None
+        # Calcula data_hora_carregamento_total aqui
+        data_hora_carregamento_total = (data_hora_limite_total - timedelta(days=dias_antecedencia)) if data_hora_limite_total else None
 
         # Guarda para os resumos
         resumo_atual[nome] = {
             "estoque":     estoque_atual_input,
             "horas":       horas_atual,
             "dias":        dias_atual,
-            "data_limite": data_limite_atual,
-            "data_carga":  data_carregamento_atual,
+            "data_limite": data_hora_limite_atual,
+            "data_carga":  data_hora_carregamento_atual,
         }
         resumo_com_compra[nome] = {
             "estoque":     estoque_atual_input + vol_comprado,
             "horas":       horas_total,
             "dias":        dias_total,
-            "data_limite": data_limite_total,
-            "data_carga":  data_carregamento_total,
+            "data_limite": data_hora_limite_total,
+            "data_carga":  data_hora_carregamento_total,
         }
 
         # Armazena dados relevantes para a calculadora no session_state
         st.session_state['autonomia_data_for_calc'][nome] = {
-            "data_limite_total": data_limite_total,
+            "data_limite_total": data_hora_limite_total, # Agora é datetime
             "vol_comprado": vol_comprado,
             "estoque_atual_input": estoque_atual_input
         }
@@ -626,13 +652,13 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
         st.markdown(
             card_autonomia("📊 Cenário atual — somente estoque",
                            horas_atual, dias_atual, cor,
-                           data_limite_atual, data_carregamento_atual),
+                           data_hora_limite_atual, data_hora_carregamento_atual),
             unsafe_allow_html=True
         )
         st.markdown(
             card_autonomia("📦 Cenário com compra — estoque + volume comprado",
                            horas_total, dias_total, cor,
-                           data_limite_total, data_carregamento_total),
+                           data_hora_limite_total, data_hora_carregamento_total),
             unsafe_allow_html=True
         )
         st.markdown("<hr class='separador'>", unsafe_allow_html=True)
@@ -729,6 +755,7 @@ def calculadora(precos_carregados):
         if uk in autonomia_data:
             data_limite_total = autonomia_data[uk].get("data_limite_total")
             if data_limite_total:
+                # data_limite_total agora é datetime, então subtraímos timedelta diretamente
                 data_da_compra = data_limite_total - timedelta(days=4)
                 todas_datas_compra.append(data_da_compra)
 
@@ -789,7 +816,7 @@ def calculadora(precos_carregados):
             f"<div style='background:#22c55e10; border:1px solid #22c55e33; border-radius:10px; padding:14px; margin-top:8px;'>"
             f"<div style='color:#22c55e; font-size:12px; font-weight:700; margin-bottom:6px;'>"
             f"📦 FOB — Plog: R$ {fmt_br(PLOG['Uiramutã_FOB'], 4)}</div>"
-            f"<div style='color:#8888aa; font-size:11px;'>Preço Desconto da planilha</div>" # Alterado para Preço Desconto
+            f"<div style='color:#8888aa; font-size:11px;'>Preço Desconto da planilha</div>"
             f"</div>",
             unsafe_allow_html=True
         )
@@ -842,6 +869,7 @@ def calculadora(precos_carregados):
     if "Uiramutã" in autonomia_data and (tipo_uiramuta == "FOB" or tipo_uiramuta == "CIF"):
         data_limite_total = autonomia_data["Uiramutã"].get("data_limite_total")
         if data_limite_total:
+            # data_limite_total agora é datetime, então subtraímos timedelta diretamente
             data_da_compra = data_limite_total - timedelta(days=4)
             todas_datas_compra.append(data_da_compra)
 
@@ -864,6 +892,7 @@ def calculadora(precos_carregados):
 
         menor_data_compra_str = "—"
         if todas_datas_compra:
+            # A menor data de compra pode ter hora, mas para exibição no resumo, só a data é suficiente
             menor_data_compra = min(todas_datas_compra)
             menor_data_compra_str = menor_data_compra.strftime("%d/%m/%Y")
 
@@ -871,26 +900,15 @@ def calculadora(precos_carregados):
             unit_name = uk_key
             tipo = "FOB"
 
-            # plog_val = PLOG.get(uk_key, "—") # Não será exibido no resumo
-            # if plog_val != "—":
-            #     plog_val = fmt_br(plog_val, 4)
-
-            # preco_litro = resultados[uk_key]['preco_litro'] # Não será exibido no resumo
             volume = resultados[uk_key]['volume']
             valor_total = resultados[uk_key]['valor_total']
             obs = observacoes.get(uk_key, "—")
-            # pm_calc = resultados[uk_key]['preco_medio_planilha'] # Não será exibido no resumo
-            # pf_calc = resultados[uk_key]['preco_final_planilha'] # Não será exibido no resumo
             pd_calc = resultados[uk_key]['preco_desconto_planilha']
 
             rows.append({
                 "Unidade": unit_name,
                 "Tipo": tipo,
-                # "Plog (R$)": plog_val, # Removido
-                # "Preço Médio (R$)": fmt_br(pm_calc, 4), # Removido
-                # "Preço Final (R$)": fmt_br(pf_calc, 4), # Removido
                 "Preço Desconto (R$)": fmt_br(pd_calc, 4),
-                # "Preço/L Calculado (R$)": fmt_br(preco_litro, 4), # Removido
                 "Volume (L)": fmt_br(volume, 0),
                 "Total (R$)": fmt_br(valor_total, 2),
                 "Data da Compra": menor_data_compra_str,
@@ -900,14 +918,9 @@ def calculadora(precos_carregados):
         if preco_uiramuta is not None:
             unit_name = "Uiramutã"
 
-            # plog_val = PLOG.get(plog_uiramuta_key, "—") # Não será exibido no resumo
-            # if plog_val != "—":
-            #     plog_val = fmt_br(plog_val, 4)
-
             obs = observacoes.get("Uiramutã", "—")
-            # pm_calc = resultados[f"Uiramutã_{tipo_uiramuta}"]['preco_medio_planilha'] # Não será exibido no resumo
-            pf_calc = resultados[f"Uiramutã_{tipo_uiramuta}"]['preco_final_planilha'] # Manter para Uiramutã CIF
-            pd_calc = resultados[f"Uiramutã_{tipo_uiramuta}"]['preco_desconto_planilha'] # Manter para Uiramutã FOB
+            pf_calc = resultados[f"Uiramutã_{tipo_uiramuta}"]['preco_final_planilha']
+            pd_calc = resultados[f"Uiramutã_{tipo_uiramuta}"]['preco_desconto_planilha']
 
             # Determinar qual preço exibir no resumo para Uiramutã
             preco_resumo_uiramuta = pd_calc if tipo_uiramuta == "FOB" else pf_calc
@@ -915,11 +928,7 @@ def calculadora(precos_carregados):
             rows.append({
                 "Unidade": unit_name,
                 "Tipo": tipo_uiramuta,
-                # "Plog (R$)": plog_val, # Removido
-                # "Preço Médio (R$)": fmt_br(pm_calc, 4), # Removido
-                # "Preço Final (R$)": fmt_br(pf_calc, 4), # Removido
                 "Preço Desconto (R$)": fmt_br(preco_resumo_uiramuta, 4), # Exibe o preço usado no cálculo
-                # "Preço/L Calculado (R$)": fmt_br(preco_uiramuta, 4), # Removido
                 "Volume (L)": fmt_br(volume_uiramuta, 0),
                 "Total (R$)": fmt_br(total_uiramuta, 2),
                 "Data da Compra": menor_data_compra_str,
@@ -928,7 +937,7 @@ def calculadora(precos_carregados):
 
         rows.append({
             "Unidade": "TOTAL", "Tipo": "—",
-            "Preço Desconto (R$)": "—", # Não faz sentido para o total
+            "Preço Desconto (R$)": "—",
             "Volume (L)": "—", "Total (R$)": fmt_br(total_geral, 2),
             "Data da Compra": menor_data_compra_str if menor_data_compra_str != "—" else "—",
             "Observação": "—"
