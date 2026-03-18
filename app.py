@@ -1076,7 +1076,7 @@ def calculadora(precos_carregados):
 # ─────────────────────────────────────────
 def main():
     with st.sidebar:
-        st.markdown("## ⚡ Painel Energético")
+        st.markdown("## ⚡ Painel")
         st.markdown("---")
         st.markdown("**Filtrar por:**")
         tipo_filtro = st.radio("", ["Ano", "Mês", "Semana"], index=1,
