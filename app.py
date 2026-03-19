@@ -9,6 +9,7 @@ from datetime import date, timedelta, datetime
 LINK_ENERGIA = "https://usinaxavantes-my.sharepoint.com/:x:/g/personal/jefferson_ferreira_usinaxavantes_onmicrosoft_com/IQDdqWDpJPZzS5sWsTULHWMPAaPbvF6rFiA99uybNJx7zh4?e=iDHkEG"
 LINK_CONSUMO = "https://usinaxavantes-my.sharepoint.com/:x:/g/personal/jefferson_ferreira_usinaxavantes_onmicrosoft_com/IQDKVJdv3LvzQY4AjhJiPbiZAYzb7lg5BPZK9-O52ctFqq4?e=RboNX9"
 LINK_PRECOS = LINK_CONSUMO # Mantém o mesmo link para preços
+LINK_NOTAS_COMBUSTIVEL = "https://usinaxavantes-my.sharepoint.com/:x:/g/personal/jefferson_ferreira_usinaxavantes_onmicrosoft_com/IQC_ryf40dZ5Qre9KxroaQlMARajfzoWwyJ6SP-9N18Ok0g?e=f1leZb"
 
 CONFIG_PLANILHAS = {
     "Amajari": {
@@ -171,6 +172,50 @@ def ler_aba_preco_excel(xl_file, sheet_name):
     # Retorna apenas a linha mais recente
     return df.iloc[0], None
 
+def ler_aba_notas_combustivel(xl_file, sheet_name="Notas_Combustível"):
+    df_raw = pd.read_excel(xl_file, sheet_name=sheet_name, header=None, nrows=20)
+    header_row = None
+    # Nomes das colunas atualizados conforme sua revisão
+    cols_alvo = ["DATA EMISSÃO", "QTD. COMBUSTÍTVEL", "NOTA FISCAL", "VALOR TOTAL NOTA", "LOCALIDADE", "PREÇO COMBUSTÍVEL"]
+    norm_cols_alvo = [norm(c) for c in cols_alvo]
+
+    for i, row in df_raw.iterrows():
+        valores = [norm(str(v)) for v in row.values]
+        if all(c in valores for c in norm_cols_alvo):
+            header_row = i
+            break
+
+    if header_row is None:
+        return None, f"Cabeçalho de notas de combustível não encontrado na aba '{sheet_name}'. Colunas esperadas: {cols_alvo}"
+
+    df = pd.read_excel(xl_file, sheet_name=sheet_name, header=header_row)
+
+    # Encontrar as colunas com os nomes normalizados
+    col_data_found      = encontrar_coluna(df.columns, "DATA EMISSÃO")
+    col_qtd_found       = encontrar_coluna(df.columns, "QTD. COMBUSTÍTVEL")
+    col_nf_found        = encontrar_coluna(df.columns, "NOTA FISCAL")
+    col_valor_total_found = encontrar_coluna(df.columns, "VALOR TOTAL NOTA")
+    col_localidade_found = encontrar_coluna(df.columns, "LOCALIDADE")
+    col_preco_comb_found = encontrar_coluna(df.columns, "PREÇO COMBUSTÍVEL")
+
+    if not all([col_data_found, col_qtd_found, col_nf_found, col_valor_total_found, col_localidade_found, col_preco_comb_found]):
+        return None, f"Algumas colunas de notas de combustível não encontradas na aba '{sheet_name}'. Disponíveis: {list(df.columns)}"
+
+    df = df[[col_data_found, col_qtd_found, col_nf_found, col_valor_total_found, col_localidade_found, col_preco_comb_found]].copy()
+    df.columns = ["data", "qtd_combustivel", "nota_fiscal", "valor_total_nota", "localidade", "preco_combustivel"]
+    df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
+    df["qtd_combustivel"] = pd.to_numeric(df["qtd_combustivel"], errors="coerce")
+    df["valor_total_nota"] = pd.to_numeric(df["valor_total_nota"], errors="coerce")
+    df["preco_combustivel"] = pd.to_numeric(df["preco_combustivel"], errors="coerce")
+    df["localidade"] = df["localidade"].astype(str).apply(norm) # Normaliza localidade
+
+    df = df.dropna(subset=["data", "qtd_combustivel", "valor_total_nota", "localidade"]).sort_values("data", ascending=False).reset_index(drop=True)
+
+    if df.empty:
+        return None, f"Nenhum dado válido encontrado na aba '{sheet_name}' após processamento."
+
+    return df, None
+
 
 @st.cache_data(ttl=300)
 def carregar_dados():
@@ -179,6 +224,7 @@ def carregar_dados():
     xl_consumo = None
     xl_energia = None
     xl_precos  = None
+    xl_notas   = None
 
     try:
         r = requests.get(converter_link(LINK_CONSUMO), timeout=20)
@@ -195,7 +241,26 @@ def carregar_dados():
     except Exception as e:
         erros.append(f"Erro ao baixar planilha de energia: {e}")
 
+    try:
+        r = requests.get(converter_link(LINK_NOTAS_COMBUSTIVEL), timeout=20)
+        r.raise_for_status()
+        xl_notas = pd.ExcelFile(io.BytesIO(r.content))
+    except Exception as e:
+        erros.append(f"Erro ao baixar planilha de notas de combustível: {e}")
+
     precos_carregados = {}
+    df_notas_combustivel = None
+
+    if xl_notas is not None:
+        try:
+            df_n, erro = ler_aba_notas_combustivel(xl_notas, "Notas_Combustível")
+            if erro:
+                erros.append(f"Notas de Combustível: {erro}")
+            else:
+                df_notas_combustivel = df_n
+        except Exception as e:
+            erros.append(f"Aba de notas de combustível 'Notas_Combustível': {e}")
+
 
     for unidade, cfg in CONFIG_PLANILHAS.items():
         df_consumo = None
@@ -292,10 +357,19 @@ def carregar_dados():
                     except Exception as e:
                         erros.append(f"{unidade} — Aba de preços CIF '{aba_preco_cif}': {e}")
 
-    return dados, erros, precos_carregados
+    return dados, erros, precos_carregados, df_notas_combustivel
 
 
 def gerar_periodos(df, tipo):
+    if df is None or df.empty:
+        return []
+    if "data" not in df.columns:
+        return []
+
+    # Garante que a coluna 'data' é datetime
+    df["data"] = pd.to_datetime(df["data"], errors="coerce")
+    df = df.dropna(subset=["data"])
+
     if tipo == "Ano":
         return sorted(df["data"].dt.year.unique().astype(str).tolist(), reverse=True)
     elif tipo == "Mês":
@@ -308,6 +382,13 @@ def gerar_periodos(df, tipo):
 
 
 def filtrar(df, tipo, periodo):
+    if df is None or df.empty or periodo is None:
+        return pd.DataFrame() # Retorna um DataFrame vazio se não houver dados ou período
+
+    # Garante que a coluna 'data' é datetime
+    df["data"] = pd.to_datetime(df["data"], errors="coerce")
+    df = df.dropna(subset=["data"])
+
     if tipo == "Ano":
         return df[df["data"].dt.year == int(periodo)]
     elif tipo == "Mês":
@@ -447,10 +528,11 @@ def secao_unidade(nome, df, tipo_filtro, periodo):
 # ─────────────────────────────────────────
 def calcular_autonomia(estoque, estoque_geradores, media_energia, cons_esp, usar_seguranca=False):
     # Garante que media_energia e cons_esp sejam floats, mesmo que venham como None
-    media_energia = float(media_energia) if media_energia is not None else 0.0
-    cons_esp = float(cons_esp) if cons_esp is not None else 0.0
+    # E que sejam 0.0 se forem None ou NaN
+    media_energia = float(media_energia) if media_energia is not None and pd.notna(media_energia) else 0.0
+    cons_esp = float(cons_esp) if cons_esp is not None and pd.notna(cons_esp) else 0.0
 
-    if not all([media_energia > 0, cons_esp > 0]): # Verifica se são maiores que zero após a conversão
+    if not (media_energia > 0 and cons_esp > 0): # Verifica se são maiores que zero após a conversão
         return None, None, None
 
     gerador_dia = media_energia / 24
@@ -563,35 +645,40 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
         icone             = UNIDADES[nome]["icone"]
         dias_antecedencia = cfg["dias_antecedencia"]
 
-        if nome not in dados:
-            st.warning(f"Dados de {nome} não disponíveis.")
-            continue
-
-        df_f = filtrar(dados[nome], tipo_filtro, periodo_sel)
-        if df_f.empty:
-            st.warning(f"{nome} — sem dados para o período.")
-            # Continuar para a próxima unidade se não houver dados para esta
-            # Mas ainda precisamos inicializar os dados para o resumo para evitar KeyError
-            resumo_atual[nome] = {
-                "estoque":     0.0,
-                "horas":       None,
-                "dias":        None,
-                "data_limite": None,
-                "data_carga":  None,
-            }
-            resumo_com_compra[nome] = {
-                "estoque":     0.0,
-                "horas":       None,
-                "dias":        None,
-                "data_limite": None,
-                "data_carga":  None,
-            }
+        # Inicializa os dados da sessão para a calculadora, mesmo que não haja dados para a unidade
+        if nome not in st.session_state['autonomia_data_for_calc']:
             st.session_state['autonomia_data_for_calc'][nome] = {
                 "data_limite_total": None,
                 "vol_comprado": 0.0,
                 "estoque_atual_input": 0.0
             }
+
+        if nome not in dados:
+            st.warning(f"Dados de {nome} não disponíveis.")
+            # Preenche os resumos com None para unidades sem dados
+            resumo_atual[nome] = {
+                "estoque":     0.0, "horas": None, "dias": None,
+                "data_limite": None, "data_carga": None,
+            }
+            resumo_com_compra[nome] = {
+                "estoque":     0.0, "horas": None, "dias": None,
+                "data_limite": None, "data_carga": None,
+            }
             continue # Pula para a próxima unidade no loop
+
+        df_f = filtrar(dados[nome], tipo_filtro, periodo_sel)
+        if df_f.empty:
+            st.warning(f"{nome} — sem dados para o período.")
+            # Preenche os resumos com None para unidades sem dados no período
+            resumo_atual[nome] = {
+                "estoque":     0.0, "horas": None, "dias": None,
+                "data_limite": None, "data_carga": None,
+            }
+            resumo_com_compra[nome] = {
+                "estoque":     0.0, "horas": None, "dias": None,
+                "data_limite": None, "data_carga": None,
+            }
+            continue
 
         tem_energia = "energia_gerada"     in df_f.columns and df_f["energia_gerada"].notna().any()
         tem_cesp    = "consumo_especifico" in df_f.columns and df_f["consumo_especifico"].notna().any()
@@ -1070,13 +1157,79 @@ def calculadora(precos_carregados):
 
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
+# ─────────────────────────────────────────
+# COMPRA DE COMBUSTÍVEL
+# ─────────────────────────────────────────
+def aba_compra_combustivel(df_notas, tipo_filtro, periodo_sel):
+    st.markdown("## ⛽ Compra de Combustível")
+    st.markdown(
+        f"<p style='color:#8888aa; font-size:13px; margin-top:-10px;'>"
+        f"Dados de notas fiscais de compra de combustível.</p>",
+        unsafe_allow_html=True
+    )
+    st.markdown("<hr class='separador'>", unsafe_allow_html=True)
+
+    if df_notas is None or df_notas.empty:
+        st.warning("Não foi possível carregar os dados de notas de combustível ou não há registros.")
+        return
+
+    # Aplicar o filtro de período primeiro
+    df_filtrado_periodo = filtrar(df_notas, tipo_filtro, periodo_sel)
+
+    if df_filtrado_periodo.empty:
+        st.warning(f"Não há dados de compra de combustível para o período selecionado ({periodo_sel}).")
+        return
+
+    # Filtro por Localidade (aplicado após o filtro de período)
+    localidades_unicas = ["Todas"] + sorted(df_filtrado_periodo["localidade"].unique().tolist())
+    localidade_selecionada = st.selectbox("Filtrar por Localidade:", localidades_unicas, key="filtro_localidade_notas")
+
+    df_final = df_filtrado_periodo.copy()
+    if localidade_selecionada != "Todas":
+        df_final = df_final[df_final["localidade"] == localidade_selecionada]
+
+    if df_final.empty:
+        st.warning(f"Não há dados de compra de combustível para a localidade '{localidade_selecionada}' no período selecionado.")
+        return
+
+    # Resumos
+    total_qtd_combustivel = df_final["qtd_combustivel"].sum()
+    total_valor_gasto     = df_final["valor_total_nota"].sum()
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.metric("Total de Combustível Adquirido", f"{fmt_br(total_qtd_combustivel, 0)} L")
+    with c2:
+        st.metric("Valor Total Gasto", f"R$ {fmt_br(total_valor_gasto, 2)}")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Tabela de dados
+    st.markdown("### Detalhes das Compras")
+    df_exibir = df_final.copy()
+    df_exibir["data"] = df_exibir["data"].dt.strftime("%d/%m/%Y")
+    df_exibir["qtd_combustivel"] = df_exibir["qtd_combustivel"].apply(lambda v: fmt_br(v, 0))
+    df_exibir["valor_total_nota"] = df_exibir["valor_total_nota"].apply(lambda v: fmt_br(v, 2))
+    df_exibir["preco_combustivel"] = df_exibir["preco_combustivel"].apply(lambda v: fmt_br(v, 4))
+
+    nomes_colunas = {
+        "data": "Data Emissão",
+        "qtd_combustivel": "Qtd. Combustível (L)",
+        "nota_fiscal": "Nota Fiscal",
+        "valor_total_nota": "Valor Total Nota (R$)",
+        "localidade": "Localidade",
+        "preco_combustivel": "Preço Combustível (R$/L)"
+    }
+    df_exibir.rename(columns=nomes_colunas, inplace=True)
+    st.dataframe(df_exibir, use_container_width=True, hide_index=True)
+
 
 # ─────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────
 def main():
     with st.sidebar:
-        st.markdown("## ⚡ Painel")
+        st.markdown("## ⚡ Painel Energético")
         st.markdown("---")
         st.markdown("**Filtrar por:**")
         tipo_filtro = st.radio("", ["Ano", "Mês", "Semana"], index=1,
@@ -1094,7 +1247,7 @@ def main():
     st.markdown("Amajari &nbsp;|&nbsp; Pacaraima &nbsp;|&nbsp; Uiramutã", unsafe_allow_html=True)
     st.markdown("---")
 
-    dados, erros, precos_carregados = carregar_dados()
+    dados, erros, precos_carregados, df_notas_combustivel = carregar_dados()
 
     if erros:
         with st.expander("⚠️ Avisos de carregamento"):
@@ -1102,20 +1255,36 @@ def main():
                 st.warning(e)
 
     periodo_sel = None
-    primeiro_df = next(iter(dados.values()), None)
-    if primeiro_df is not None:
-        periodos = gerar_periodos(primeiro_df, tipo_filtro)
+    # Usar df_notas_combustivel para gerar períodos se for o mais completo ou o único disponível
+    # Ou usar o primeiro df de dados de consumo/energia se houver
+    df_para_periodos = None
+    if df_notas_combustivel is not None and not df_notas_combustivel.empty:
+        df_para_periodos = df_notas_combustivel
+    elif next(iter(dados.values()), None) is not None:
+        df_para_periodos = next(iter(dados.values()))
+
+    if df_para_periodos is not None:
+        periodos = gerar_periodos(df_para_periodos, tipo_filtro)
         if periodos:
             with st.sidebar:
                 st.markdown("---")
                 periodo_sel = st.selectbox(f"Selecione o {tipo_filtro.lower()}:", periodos)
+        else:
+            st.sidebar.warning("Não foi possível gerar períodos para o filtro.")
+    else:
+        st.sidebar.warning("Nenhum dado disponível para gerar períodos de filtro.")
 
-    tab_amajari, tab_pacaraima, tab_uiramuta, tab_autonomia, tab_calc = st.tabs([
-        "🔵 Amajari", "🟠 Pacaraima", "🟢 Uiramutã", "🛢️ Autonomia", "🧮 Calculadora"
+
+    tab_amajari, tab_pacaraima, tab_uiramuta, tab_autonomia, tab_calc, tab_compras = st.tabs([
+        "🔵 Amajari", "🟠 Pacaraima", "🟢 Uiramutã", "🛢️ Autonomia", "🧮 Calculadora", "⛽ Compra Combustível"
     ])
 
     with tab_calc:
         calculadora(precos_carregados)
+
+    with tab_compras:
+        # Passa o tipo_filtro e periodo_sel para a aba de compras
+        aba_compra_combustivel(df_notas_combustivel, tipo_filtro, periodo_sel)
 
     if not dados:
         for tab in [tab_amajari, tab_pacaraima, tab_uiramuta, tab_autonomia]:
@@ -1133,7 +1302,7 @@ def main():
                 if nome in dados and periodo_sel:
                     secao_unidade(nome, dados[nome], tipo_filtro, periodo_sel)
                 else:
-                    st.error(f"Dados de {nome} não disponíveis.")
+                    st.error(f"Dados de {nome} não disponíveis ou período não selecionado.")
 
         with tab_autonomia:
             if periodo_sel:
