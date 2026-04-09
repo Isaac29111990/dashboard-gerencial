@@ -8,7 +8,7 @@ from datetime import date, timedelta, datetime
 
 LINK_ENERGIA = "https://usinaxavantes-my.sharepoint.com/:x:/g/personal/jefferson_ferreira_usinaxavantes_onmicrosoft_com/IQDdqWDpJPZzS5sWsTULHWMPAaPbvF6rFiA99uybNJx7zh4?e=iDHkEG"
 LINK_CONSUMO = "https://usinaxavantes-my.sharepoint.com/:x:/g/personal/jefferson_ferreira_usinaxavantes_onmicrosoft_com/IQDKVJdv3LvzQY4AjhJiPbiZAYzb7lg5BPZK9-O52ctFqq4?e=RboNX9"
-LINK_PRECOS = LINK_CONSUMO # Mantém o mesmo link para preços
+LINK_PRECOS = LINK_CONSUMO
 LINK_NOTAS_COMBUSTIVEL = "https://usinaxavantes-my.sharepoint.com/:x:/g/personal/jefferson_ferreira_usinaxavantes_onmicrosoft_com/IQC_ryf40dZ5Qre9KxroaQlMARajfzoWwyJ6SP-9N18Ok0g?e=f1leZb"
 
 CONFIG_PLANILHAS = {
@@ -17,23 +17,23 @@ CONFIG_PLANILHAS = {
         "col_data_c": "DATA", "col_consumo": "Consumo Calculado",
         "col_data_e": "DATA", "col_energia": "ENERGIA GERADA TOTAL MWh",
         "dias_antecedencia": 2,
-        "aba_preco_desconto": "Preço_Amajari", # Usar Preço_Amajari para Preço Desconto
+        "aba_preco_desconto": "Preço_Amajari",
     },
     "Pacaraima": {
         "aba_consumo": "Pacaraima", "aba_energia": "Energia_Pacaraima",
         "col_data_c": "DATA", "col_consumo": "Consumo Calculado",
         "col_data_e": "DATA", "col_energia": "ENERGIA GERADA TOTAL MWh",
         "dias_antecedencia": 2,
-        "aba_preco_completa": "Preço_Pacaraima", # Nova aba para Carga Completa
-        "aba_preco_parcial": "Preço_Pacaraima_Parcial", # Nova aba para Carga Parcial
+        "aba_preco_completa": "Preço_Pacaraima",
+        "aba_preco_parcial": "Preço_Pacaraima_Parcial",
     },
     "Uiramutã": {
         "aba_consumo": "Uiramutã", "aba_energia": "Energia_Uiramutã",
         "col_data_c": "DATA", "col_consumo": "Consumo Calculado",
         "col_data_e": "Data", "col_energia": "Energia Gerada MWh",
         "dias_antecedencia": 3,
-        "aba_preco_fob": "Preço_Uiramutã_FOB", # Usar Preço_Uiramutã_FOB para Preço Final
-        "aba_preco_cif": "Preço_Uiramutã_CIF", # Usar Preço_Uiramutã_CIF para Preço Desconto
+        "aba_preco_fob": "Preço_Uiramutã_FOB",
+        "aba_preco_cif": "Preço_Uiramutã_CIF",
     },
 }
 
@@ -75,7 +75,7 @@ COR_CONSUMO = "#60a5fa"
 COR_ENERGIA = "#facc15"
 DESCONTO    = 1.0530
 BOMBEAMENTO = 0.135
-# PLOG fixo removido, será carregado dinamicamente
+
 
 def fmt_br(valor, decimais=0):
     if valor is None:
@@ -131,10 +131,11 @@ def ler_aba_excel(xl_file, sheet_name, col_data_alvo, col_valor_alvo):
     df = df.dropna().sort_values("data").reset_index(drop=True)
     return df, None
 
+
 def ler_aba_preco_excel(xl_file, sheet_name):
     df_raw = pd.read_excel(xl_file, sheet_name=sheet_name, header=None, nrows=20)
     header_row = None
-    cols_alvo = ["DATA", "PREÇO MÉDIO", "PREÇO FINAL", "PREÇO DESCONTO", "PLOG"] # Adicionado PLOG
+    cols_alvo = ["DATA", "PREÇO MÉDIO", "PREÇO FINAL", "PREÇO DESCONTO", "PLOG"]
     norm_cols_alvo = [norm(c) for c in cols_alvo]
 
     for i, row in df_raw.iterrows():
@@ -148,34 +149,33 @@ def ler_aba_preco_excel(xl_file, sheet_name):
 
     df = pd.read_excel(xl_file, sheet_name=sheet_name, header=header_row)
 
-    col_data_found    = encontrar_coluna(df.columns, "DATA")
-    col_pm_found      = encontrar_coluna(df.columns, "PREÇO MÉDIO")
-    col_pf_found      = encontrar_coluna(df.columns, "PREÇO FINAL")
-    col_desc_found    = encontrar_coluna(df.columns, "PREÇO DESCONTO")
-    col_plog_found    = encontrar_coluna(df.columns, "PLOG") # Encontrar coluna PLOG
+    col_data_found  = encontrar_coluna(df.columns, "DATA")
+    col_pm_found    = encontrar_coluna(df.columns, "PREÇO MÉDIO")
+    col_pf_found    = encontrar_coluna(df.columns, "PREÇO FINAL")
+    col_desc_found  = encontrar_coluna(df.columns, "PREÇO DESCONTO")
+    col_plog_found  = encontrar_coluna(df.columns, "PLOG")
 
     if not all([col_data_found, col_pm_found, col_pf_found, col_desc_found, col_plog_found]):
         return None, f"Algumas colunas de preço não encontradas na aba '{sheet_name}'. Disponíveis: {list(df.columns)}"
 
     df = df[[col_data_found, col_pm_found, col_pf_found, col_desc_found, col_plog_found]].copy()
-    df.columns = ["data", "preco_medio", "preco_final", "preco_desconto", "plog"] # Adicionado plog
-    df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
+    df.columns = ["data", "preco_medio", "preco_final", "preco_desconto", "plog"]
+    df["data"]           = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
     df["preco_medio"]    = pd.to_numeric(df["preco_medio"], errors="coerce")
     df["preco_final"]    = pd.to_numeric(df["preco_final"], errors="coerce")
     df["preco_desconto"] = pd.to_numeric(df["preco_desconto"], errors="coerce")
-    df["plog"]           = pd.to_numeric(df["plog"], errors="coerce") # Converter PLOG
+    df["plog"]           = pd.to_numeric(df["plog"], errors="coerce")
     df = df.dropna(subset=["data", "preco_medio", "preco_final", "preco_desconto", "plog"]).sort_values("data", ascending=False).reset_index(drop=True)
 
     if df.empty:
         return None, f"Nenhum dado válido encontrado na aba '{sheet_name}' após processamento."
 
-    # Retorna apenas a linha mais recente
     return df.iloc[0], None
+
 
 def ler_aba_notas_combustivel(xl_file, sheet_name="Notas_Combustível"):
     df_raw = pd.read_excel(xl_file, sheet_name=sheet_name, header=None, nrows=20)
     header_row = None
-    # Nomes das colunas atualizados conforme sua revisão
     cols_alvo = ["DATA EMISSÃO", "QTD. COMBUSTÍTVEL", "NOTA FISCAL", "VALOR TOTAL NOTA", "LOCALIDADE", "PREÇO COMBUSTÍVEL"]
     norm_cols_alvo = [norm(c) for c in cols_alvo]
 
@@ -190,25 +190,23 @@ def ler_aba_notas_combustivel(xl_file, sheet_name="Notas_Combustível"):
 
     df = pd.read_excel(xl_file, sheet_name=sheet_name, header=header_row)
 
-    # Encontrar as colunas com os nomes normalizados
-    col_data_found      = encontrar_coluna(df.columns, "DATA EMISSÃO")
-    col_qtd_found       = encontrar_coluna(df.columns, "QTD. COMBUSTÍTVEL")
-    col_nf_found        = encontrar_coluna(df.columns, "NOTA FISCAL")
+    col_data_found        = encontrar_coluna(df.columns, "DATA EMISSÃO")
+    col_qtd_found         = encontrar_coluna(df.columns, "QTD. COMBUSTÍTVEL")
+    col_nf_found          = encontrar_coluna(df.columns, "NOTA FISCAL")
     col_valor_total_found = encontrar_coluna(df.columns, "VALOR TOTAL NOTA")
-    col_localidade_found = encontrar_coluna(df.columns, "LOCALIDADE")
-    col_preco_comb_found = encontrar_coluna(df.columns, "PREÇO COMBUSTÍVEL")
+    col_localidade_found  = encontrar_coluna(df.columns, "LOCALIDADE")
+    col_preco_comb_found  = encontrar_coluna(df.columns, "PREÇO COMBUSTÍVEL")
 
     if not all([col_data_found, col_qtd_found, col_nf_found, col_valor_total_found, col_localidade_found, col_preco_comb_found]):
         return None, f"Algumas colunas de notas de combustível não encontradas na aba '{sheet_name}'. Disponíveis: {list(df.columns)}"
 
     df = df[[col_data_found, col_qtd_found, col_nf_found, col_valor_total_found, col_localidade_found, col_preco_comb_found]].copy()
     df.columns = ["data", "qtd_combustivel", "nota_fiscal", "valor_total_nota", "localidade", "preco_combustivel"]
-    df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
-    df["qtd_combustivel"] = pd.to_numeric(df["qtd_combustivel"], errors="coerce")
+    df["data"]             = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
+    df["qtd_combustivel"]  = pd.to_numeric(df["qtd_combustivel"], errors="coerce")
     df["valor_total_nota"] = pd.to_numeric(df["valor_total_nota"], errors="coerce")
-    df["preco_combustivel"] = pd.to_numeric(df["preco_combustivel"], errors="coerce")
-    df["localidade"] = df["localidade"].astype(str).apply(norm) # Normaliza localidade
-
+    df["preco_combustivel"]= pd.to_numeric(df["preco_combustivel"], errors="coerce")
+    df["localidade"]       = df["localidade"].astype(str).apply(norm)
     df = df.dropna(subset=["data", "qtd_combustivel", "valor_total_nota", "localidade"]).sort_values("data", ascending=False).reset_index(drop=True)
 
     if df.empty:
@@ -230,7 +228,7 @@ def carregar_dados():
         r = requests.get(converter_link(LINK_CONSUMO), timeout=20)
         r.raise_for_status()
         xl_consumo = pd.ExcelFile(io.BytesIO(r.content))
-        xl_precos = xl_consumo
+        xl_precos  = xl_consumo
     except Exception as e:
         erros.append(f"Erro ao baixar planilha de consumo/preços: {e}")
 
@@ -248,7 +246,7 @@ def carregar_dados():
     except Exception as e:
         erros.append(f"Erro ao baixar planilha de notas de combustível: {e}")
 
-    precos_carregados = {}
+    precos_carregados    = {}
     df_notas_combustivel = None
 
     if xl_notas is not None:
@@ -260,7 +258,6 @@ def carregar_dados():
                 df_notas_combustivel = df_n
         except Exception as e:
             erros.append(f"Aba de notas de combustível 'Notas_Combustível': {e}")
-
 
     for unidade, cfg in CONFIG_PLANILHAS.items():
         df_consumo = None
@@ -276,6 +273,7 @@ def carregar_dados():
                     df_consumo = df_c.rename(columns={"valor": "consumo"})
             except Exception as e:
                 erros.append(f"{unidade} — Aba consumo: {e}")
+
         if xl_energia is not None:
             try:
                 df_e, erro = ler_aba_excel(xl_energia, cfg["aba_energia"],
@@ -314,48 +312,32 @@ def carregar_dados():
                             precos_carregados[unidade] = preco_data
                     except Exception as e:
                         erros.append(f"{unidade} — Aba de preços '{aba_preco}': {e}")
+
             elif unidade == "Pacaraima":
-                aba_preco_completa = cfg.get("aba_preco_completa")
-                aba_preco_parcial  = cfg.get("aba_preco_parcial")
-                if aba_preco_completa:
-                    try:
-                        preco_completa_data, erro = ler_aba_preco_excel(xl_precos, aba_preco_completa)
-                        if erro:
-                            erros.append(f"{unidade} — Preços Carga Completa: {erro}")
-                        else:
-                            precos_carregados["Pacaraima_Completa"] = preco_completa_data
-                    except Exception as e:
-                        erros.append(f"{unidade} — Aba de preços Carga Completa '{aba_preco_completa}': {e}")
-                if aba_preco_parcial:
-                    try:
-                        preco_parcial_data, erro = ler_aba_preco_excel(xl_precos, aba_preco_parcial)
-                        if erro:
-                            erros.append(f"{unidade} — Preços Carga Parcial: {erro}")
-                        else:
-                            precos_carregados["Pacaraima_Parcial"] = preco_parcial_data
-                    except Exception as e:
-                        erros.append(f"{unidade} — Aba de preços Carga Parcial '{aba_preco_parcial}': {e}")
+                for chave, cfg_key in [("Pacaraima_Completa", "aba_preco_completa"), ("Pacaraima_Parcial", "aba_preco_parcial")]:
+                    aba = cfg.get(cfg_key)
+                    if aba:
+                        try:
+                            preco_data, erro = ler_aba_preco_excel(xl_precos, aba)
+                            if erro:
+                                erros.append(f"{unidade} — Preços {chave}: {erro}")
+                            else:
+                                precos_carregados[chave] = preco_data
+                        except Exception as e:
+                            erros.append(f"{unidade} — Aba de preços '{aba}': {e}")
+
             elif unidade == "Uiramutã":
-                aba_preco_fob = cfg.get("aba_preco_fob")
-                aba_preco_cif = cfg.get("aba_preco_cif")
-                if aba_preco_fob:
-                    try:
-                        preco_fob_data, erro = ler_aba_preco_excel(xl_precos, aba_preco_fob)
-                        if erro:
-                            erros.append(f"{unidade} — Preços FOB: {erro}")
-                        else:
-                            precos_carregados["Uiramutã_FOB"] = preco_fob_data
-                    except Exception as e:
-                        erros.append(f"{unidade} — Aba de preços FOB '{aba_preco_fob}': {e}")
-                if aba_preco_cif:
-                    try:
-                        preco_cif_data, erro = ler_aba_preco_excel(xl_precos, aba_preco_cif)
-                        if erro:
-                            erros.append(f"{unidade} — Preços CIF: {erro}")
-                        else:
-                            precos_carregados["Uiramutã_CIF"] = preco_cif_data
-                    except Exception as e:
-                        erros.append(f"{unidade} — Aba de preços CIF '{aba_preco_cif}': {e}")
+                for chave, cfg_key in [("Uiramutã_FOB", "aba_preco_fob"), ("Uiramutã_CIF", "aba_preco_cif")]:
+                    aba = cfg.get(cfg_key)
+                    if aba:
+                        try:
+                            preco_data, erro = ler_aba_preco_excel(xl_precos, aba)
+                            if erro:
+                                erros.append(f"{unidade} — Preços {chave}: {erro}")
+                            else:
+                                precos_carregados[chave] = preco_data
+                        except Exception as e:
+                            erros.append(f"{unidade} — Aba de preços '{aba}': {e}")
 
     return dados, erros, precos_carregados, df_notas_combustivel
 
@@ -365,11 +347,8 @@ def gerar_periodos(df, tipo):
         return []
     if "data" not in df.columns:
         return []
-
-    # Garante que a coluna 'data' é datetime
     df["data"] = pd.to_datetime(df["data"], errors="coerce")
     df = df.dropna(subset=["data"])
-
     if tipo == "Ano":
         return sorted(df["data"].dt.year.unique().astype(str).tolist(), reverse=True)
     elif tipo == "Mês":
@@ -383,12 +362,9 @@ def gerar_periodos(df, tipo):
 
 def filtrar(df, tipo, periodo):
     if df is None or df.empty or periodo is None:
-        return pd.DataFrame() # Retorna um DataFrame vazio se não houver dados ou período
-
-    # Garante que a coluna 'data' é datetime
+        return pd.DataFrame()
     df["data"] = pd.to_datetime(df["data"], errors="coerce")
     df = df.dropna(subset=["data"])
-
     if tipo == "Ano":
         return df[df["data"].dt.year == int(periodo)]
     elif tipo == "Mês":
@@ -472,12 +448,12 @@ def secao_unidade(nome, df, tipo_filtro, periodo):
         st.warning("Sem dados para o período selecionado.")
         return
 
-    tem_consumo = "consumo"        in df_f.columns and df_f["consumo"].notna().any()
-    tem_energia = "energia_gerada" in df_f.columns and df_f["energia_gerada"].notna().any()
+    tem_consumo   = "consumo"        in df_f.columns and df_f["consumo"].notna().any()
+    tem_energia   = "energia_gerada" in df_f.columns and df_f["energia_gerada"].notna().any()
     consumo_total = float(df_f["consumo"].sum())        if tem_consumo else None
     media_consumo = float(df_f["consumo"].mean())       if tem_consumo else None
     energia_total = float(df_f["energia_gerada"].sum()) if tem_energia else None
-    cons_esp = (consumo_total / energia_total) if (consumo_total and energia_total and energia_total > 0) else None
+    cons_esp      = (consumo_total / energia_total) if (consumo_total and energia_total and energia_total > 0) else None
 
     c1, c2, c3, c4, c5 = st.columns(5)
     with c1: st.metric("⛽ Consumo Total",    f"{fmt_br(consumo_total, 0)} L")
@@ -527,24 +503,19 @@ def secao_unidade(nome, df, tipo_filtro, periodo):
 # AUTONOMIA
 # ─────────────────────────────────────────
 def calcular_autonomia(estoque, estoque_geradores, media_energia, cons_esp, usar_seguranca=False):
-    # Garante que media_energia e cons_esp sejam floats, mesmo que venham como None
-    # E que sejam 0.0 se forem None ou NaN
     media_energia = float(media_energia) if media_energia is not None and pd.notna(media_energia) else 0.0
-    cons_esp = float(cons_esp) if cons_esp is not None and pd.notna(cons_esp) else 0.0
+    cons_esp      = float(cons_esp)      if cons_esp      is not None and pd.notna(cons_esp)      else 0.0
 
-    if not (media_energia > 0 and cons_esp > 0): # Verifica se são maiores que zero após a conversão
+    if not (media_energia > 0 and cons_esp > 0):
         return None, None, None
 
     gerador_dia = media_energia / 24
-
     if gerador_dia == 0:
         return 0.0, 0.0, datetime.now()
 
     horas_operacao = (estoque / cons_esp) / gerador_dia
-
     if usar_seguranca:
         horas_operacao = horas_operacao - estoque_geradores - 24
-
     horas_operacao = max(horas_operacao, 0)
     dias_operacao  = horas_operacao / 24
 
@@ -552,7 +523,6 @@ def calcular_autonomia(estoque, estoque_geradores, media_energia, cons_esp, usar
         return 0.0, 0.0, datetime.now()
 
     data_hora_limite = datetime.now() + timedelta(hours=horas_operacao)
-
     return horas_operacao, dias_operacao, data_hora_limite
 
 
@@ -571,7 +541,7 @@ def card_autonomia(titulo, horas, dias, cor, data_hora_limite=None, data_hora_ca
     data_carg_str = data_hora_carregamento.strftime("%d/%m/%Y") if data_hora_carregamento else "—"
     hora_carg_str = data_hora_carregamento.strftime("%H:%M")    if data_hora_carregamento else "—"
 
-    html = (
+    return (
         f"<div style='background:{cor}12; border:1px solid {cor}33; border-radius:14px; "
         f"padding:20px 24px; margin-bottom:12px;'>"
         f"<div style='color:{cor}; font-size:12px; font-weight:700; "
@@ -587,35 +557,33 @@ def card_autonomia(titulo, horas, dias, cor, data_hora_limite=None, data_hora_ca
         f"<div style='color:#f97316; font-size:22px; font-weight:700;'>{data_carg_str} {hora_carg_str}</div></div>"
         f"</div></div>"
     )
-    return html
 
 
 def _render_resumo_html(resumo_data, title_prefix):
     rows = []
     for nome, info in resumo_data.items():
-        data_aut_str  = info["data_limite"].strftime("%d/%m/%Y") if info["data_limite"]      else "—"
-        hora_aut_str  = info["data_limite"].strftime("%H:%M")    if info["data_limite"]      else "—"
-        data_carg_str = info["data_carga"].strftime("%d/%m/%Y")  if info["data_carga"]       else "—"
-        hora_carg_str = info["data_carga"].strftime("%H:%M")     if info["data_carga"]       else "—"
-        dias  = fmt_br(info["dias"], 1)                  if info["dias"] is not None else "—"
-        horas = fmt_br(info["horas"], 1)                 if info["horas"] is not None else "—"
-        estoque = fmt_br(info["estoque"], 0)             if info["estoque"] is not None else "—"
+        data_aut_str  = info["data_limite"].strftime("%d/%m/%Y") if info["data_limite"] else "—"
+        hora_aut_str  = info["data_limite"].strftime("%H:%M")    if info["data_limite"] else "—"
+        data_carg_str = info["data_carga"].strftime("%d/%m/%Y")  if info["data_carga"]  else "—"
+        hora_carg_str = info["data_carga"].strftime("%H:%M")     if info["data_carga"]  else "—"
+        dias    = fmt_br(info["dias"], 1)    if info["dias"]    is not None else "—"
+        horas   = fmt_br(info["horas"], 1)   if info["horas"]   is not None else "—"
+        estoque = fmt_br(info["estoque"], 0) if info["estoque"] is not None else "—"
 
         rows.append({
-            "Unidade": nome,
+            "Unidade":          nome,
             "Volume Estoque (L)": estoque,
-            "Horas de Operação": horas,
-            "Dias de Operação": dias,
-            "Data Autonomia": data_aut_str,
-            "Hora Autonomia": hora_aut_str,
-            "Data Carregar": data_carg_str,
-            "Hora Carregar": hora_carg_str,
+            "Horas de Operação":  horas,
+            "Dias de Operação":   dias,
+            "Data Autonomia":     data_aut_str,
+            "Hora Autonomia":     hora_aut_str,
+            "Data Carregar":      data_carg_str,
+            "Hora Carregar":      hora_carg_str,
         })
 
     if rows:
-        df_resumo = pd.DataFrame(rows)
         with st.expander(f"📋 {title_prefix}"):
-            st.dataframe(df_resumo, use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
     st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
 
@@ -631,8 +599,7 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
         unsafe_allow_html=True
     )
 
-    agora = datetime.now()
-    resumo_atual = {}
+    resumo_atual      = {}
     resumo_com_compra = {}
 
     if 'autonomia_data_for_calc' not in st.session_state:
@@ -645,7 +612,6 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
         icone             = UNIDADES[nome]["icone"]
         dias_antecedencia = cfg["dias_antecedencia"]
 
-        # Inicializa os dados da sessão para a calculadora, mesmo que não haja dados para a unidade
         if nome not in st.session_state['autonomia_data_for_calc']:
             st.session_state['autonomia_data_for_calc'][nome] = {
                 "data_limite_total": None,
@@ -655,35 +621,23 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
 
         if nome not in dados:
             st.warning(f"Dados de {nome} não disponíveis.")
-            # Preenche os resumos com None para unidades sem dados
-            resumo_atual[nome] = {
-                "estoque":     0.0, "horas": None, "dias": None,
+            resumo_atual[nome] = resumo_com_compra[nome] = {
+                "estoque": 0.0, "horas": None, "dias": None,
                 "data_limite": None, "data_carga": None,
             }
-            resumo_com_compra[nome] = {
-                "estoque":     0.0, "horas": None, "dias": None,
-                "data_limite": None, "data_carga": None,
-            }
-            continue # Pula para a próxima unidade no loop
+            continue
 
         df_f = filtrar(dados[nome], tipo_filtro, periodo_sel)
         if df_f.empty:
             st.warning(f"{nome} — sem dados para o período.")
-            # Preenche os resumos com None para unidades sem dados no período
-            resumo_atual[nome] = {
-                "estoque":     0.0, "horas": None, "dias": None,
-                "data_limite": None, "data_carga": None,
-            }
-            resumo_com_compra[nome] = {
-                "estoque":     0.0, "horas": None, "dias": None,
+            resumo_atual[nome] = resumo_com_compra[nome] = {
+                "estoque": 0.0, "horas": None, "dias": None,
                 "data_limite": None, "data_carga": None,
             }
             continue
 
         tem_energia = "energia_gerada"     in df_f.columns and df_f["energia_gerada"].notna().any()
         tem_cesp    = "consumo_especifico" in df_f.columns and df_f["consumo_especifico"].notna().any()
-
-        # Garante que media_energia e media_cesp sejam 0.0 se não houver dados
         media_energia = float(df_f["energia_gerada"].mean())     if tem_energia else 0.0
         media_cesp    = float(df_f["consumo_especifico"].mean()) if tem_cesp    else 0.0
 
@@ -697,15 +651,12 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
 
         mc1, mc2, mc3 = st.columns(3)
         with mc1:
-            st.metric("⚡ Média Energia/dia",
-                      f"{fmt_br(media_energia, 2)} MWh" if media_energia else "—")
+            st.metric("⚡ Média Energia/dia",  f"{fmt_br(media_energia, 2)} MWh" if media_energia else "—")
         with mc2:
             gerador_hora = (media_energia / 24) if media_energia else None
-            st.metric("🔧 Gerador/hora",
-                      f"{fmt_br(gerador_hora, 4)} MWh/h" if gerador_hora else "—")
+            st.metric("🔧 Gerador/hora",        f"{fmt_br(gerador_hora, 4)} MWh/h" if gerador_hora else "—")
         with mc3:
-            st.metric("🔢 Cons. Específico médio",
-                      f"{fmt_br(media_cesp, 2)} L/MWh" if media_cesp else "—")
+            st.metric("🔢 Cons. Específico médio", f"{fmt_br(media_cesp, 2)} L/MWh" if media_cesp else "—")
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -717,8 +668,7 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
             )
         with ci2:
             usar_estoque_ger = st.checkbox(
-                "Considerar estoque de segurança", value=False,
-                key=f"usar_est_ger_{nome}"
+                "Considerar estoque de segurança", value=False, key=f"usar_est_ger_{nome}"
             )
             estoque_geradores = st.number_input(
                 "⚙️ Estoque Geradores (h)", min_value=0.0, step=0.5,
@@ -735,21 +685,22 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
         est_ger_efetivo = estoque_geradores if usar_estoque_ger else 0.0
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Cenário 1 — estoque atual
         horas_atual, dias_atual, data_hora_limite_atual = calcular_autonomia(
             estoque_atual_input, est_ger_efetivo, media_energia, media_cesp,
             usar_seguranca=usar_estoque_ger
         )
-        data_hora_carregamento_atual = (data_hora_limite_atual - timedelta(days=dias_antecedencia)) if data_hora_limite_atual else None
+        data_hora_carregamento_atual = (
+            data_hora_limite_atual - timedelta(days=dias_antecedencia)
+        ) if data_hora_limite_atual else None
 
-        # Cenário 2 — estoque + compra
         horas_total, dias_total, data_hora_limite_total = calcular_autonomia(
             estoque_atual_input + vol_comprado, est_ger_efetivo, media_energia, media_cesp,
             usar_seguranca=usar_estoque_ger
         )
-        data_hora_carregamento_total = (data_hora_limite_total - timedelta(days=dias_antecedencia)) if data_hora_limite_total else None
+        data_hora_carregamento_total = (
+            data_hora_limite_total - timedelta(days=dias_antecedencia)
+        ) if data_hora_limite_total else None
 
-        # Guarda para os resumos
         resumo_atual[nome] = {
             "estoque":     estoque_atual_input,
             "horas":       horas_atual,
@@ -765,11 +716,10 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
             "data_carga":  data_hora_carregamento_total,
         }
 
-        # Armazena dados relevantes para a calculadora no session_state
         st.session_state['autonomia_data_for_calc'][nome] = {
-            "data_limite_total": data_hora_limite_total,
-            "vol_comprado": vol_comprado,
-            "estoque_atual_input": estoque_atual_input
+            "data_limite_total":   data_hora_limite_total,
+            "vol_comprado":        vol_comprado,
+            "estoque_atual_input": estoque_atual_input,
         }
 
         st.markdown(
@@ -786,9 +736,8 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
         )
         st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
-    # ── Resumos ao final (sempre atualizado) ──
     if resumo_atual:
-        _render_resumo_html(resumo_atual, "Resumo — Cenário Atual (somente estoque)")
+        _render_resumo_html(resumo_atual,      "Resumo — Cenário Atual (somente estoque)")
     if resumo_com_compra:
         _render_resumo_html(resumo_com_compra, "Resumo — Cenário com Compra (estoque + volume comprado)")
 
@@ -802,27 +751,28 @@ def calculadora(precos_carregados):
         f"<p style='color:#8888aa; font-size:13px; margin-top:-10px;'>"
         f"Bombeamento: R$ {fmt_br(BOMBEAMENTO, 3)} &nbsp;|&nbsp; Desconto: R$ {fmt_br(DESCONTO, 4)}<br>"
         f"FOB — Preço/Litro = Pm + Plog + Bombeamento − Desconto &nbsp;|&nbsp; "
-        f"CIF — Preço/Litro = Pm + Plog + Bombeamento</p>", # Descrição antiga, o cálculo agora usa as colunas diretas
+        f"CIF — Preço/Litro = Pm + Plog + Bombeamento</p>",
         unsafe_allow_html=True
     )
     st.markdown("<hr class='separador'>", unsafe_allow_html=True)
-    resultados = {}
-    observacoes = {}
 
-    autonomia_data = st.session_state.get('autonomia_data_for_calc', {})
+    resultados      = {}
+    observacoes     = {}
+    datas_pagamento = {}  # ← datas manuais de pagamento por unidade
 
+    autonomia_data    = st.session_state.get('autonomia_data_for_calc', {})
     todas_datas_compra = []
 
-    # Amajari
+    # ── Amajari ──────────────────────────────────────────────────────────
     uk = "Amajari"
     cor   = UNIDADES[uk]["cor"]
     icone = UNIDADES[uk]["icone"]
 
-    preco_info = precos_carregados.get(uk, {})
-    pm_planilha = preco_info.get("preco_medio", 0.0)
-    pf_planilha = preco_info.get("preco_final", 0.0)
-    pd_planilha = preco_info.get("preco_desconto", 0.0)
-    plog_planilha = preco_info.get("plog", 0.0) # Plog dinâmico
+    preco_info          = precos_carregados.get(uk, {})
+    pm_planilha         = preco_info.get("preco_medio",    0.0)
+    pf_planilha         = preco_info.get("preco_final",    0.0)
+    pd_planilha         = preco_info.get("preco_desconto", 0.0)
+    plog_planilha       = preco_info.get("plog",           0.0)
     data_preco_planilha = preco_info.get("data")
 
     st.markdown(
@@ -830,332 +780,331 @@ def calculadora(precos_carregados):
         f"{icone} {uk} &nbsp;<small style='opacity:0.7'>Plog: R$ {fmt_br(plog_planilha, 4)}</small></span>",
         unsafe_allow_html=True
     )
-
     if data_preco_planilha:
-        st.markdown(f"<p style='color:#8888aa; font-size:12px; margin-top:-8px;'>Último preço carregado em: {data_preco_planilha.strftime('%d/%m/%Y')}</p>", unsafe_allow_html=True)
+        st.markdown(
+            f"<p style='color:#8888aa; font-size:12px; margin-top:-8px;'>"
+            f"Último preço carregado em: {data_preco_planilha.strftime('%d/%m/%Y')}</p>",
+            unsafe_allow_html=True
+        )
     else:
         st.warning(f"Não foi possível carregar os preços mais recentes para {uk}.")
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.markdown(
-            f"<div style='background:#1e1e2e; border:1px solid #2a2a4a; border-radius:8px; "
-            f"padding:10px 14px; margin-top:26px;'>"
+            f"<div style='background:#1e1e2e; border:1px solid #2a2a4a; border-radius:8px; padding:10px 14px; margin-top:26px;'>"
             f"<div style='color:#8888aa; font-size:11px;'>Preço Médio (Pm)</div>"
             f"<div style='color:#e0e0f0; font-size:18px; font-weight:bold;'>R$ {fmt_br(pm_planilha, 4)}</div>"
-            f"</div>",
-            unsafe_allow_html=True
+            f"</div>", unsafe_allow_html=True
         )
     with c2:
         st.markdown(
-            f"<div style='background:#1e1e2e; border:1px solid #2a2a4a; border-radius:8px; "
-            f"padding:10px 14px; margin-top:26px;'>"
+            f"<div style='background:#1e1e2e; border:1px solid #2a2a4a; border-radius:8px; padding:10px 14px; margin-top:26px;'>"
             f"<div style='color:#8888aa; font-size:11px;'>Plog</div>"
             f"<div style='color:#e0e0f0; font-size:18px; font-weight:bold;'>R$ {fmt_br(plog_planilha, 4)}</div>"
-            f"</div>",
-            unsafe_allow_html=True
+            f"</div>", unsafe_allow_html=True
         )
     with c3:
         vol_default = autonomia_data.get(uk, {}).get("vol_comprado", 0.0)
-        vol = st.number_input("Volume (L)", min_value=0.0, step=1.0, format="%.0f", key=f"vol_{uk}", value=vol_default)
+        vol = st.number_input("Volume (L)", min_value=0.0, step=1.0, format="%.0f",
+                              key=f"vol_{uk}", value=vol_default)
     with c4:
-        preco = pd_planilha # Amajari usa Preço Desconto
+        preco = pd_planilha
         total = preco * vol
         st.markdown(
-            f"<div style='background:{cor}15; border:1px solid {cor}44; border-radius:10px; "
-            f"padding:10px 14px; margin-top:26px;'>"
+            f"<div style='background:{cor}15; border:1px solid {cor}44; border-radius:10px; padding:10px 14px; margin-top:26px;'>"
             f"<div style='color:{cor}; font-size:11px; font-weight:600;'>PREÇO / LITRO</div>"
             f"<div style='color:#e0e0f0; font-size:20px; font-weight:bold;'>R$ {fmt_br(preco, 4)}</div>"
             f"<div style='color:{cor}; font-size:11px; font-weight:600; margin-top:8px;'>VALOR TOTAL</div>"
             f"<div style='color:#e0e0f0; font-size:20px; font-weight:bold;'>R$ {fmt_br(total, 2)}</div>"
-            f"</div>",
-            unsafe_allow_html=True
+            f"</div>", unsafe_allow_html=True
         )
+
     resultados[uk] = {"preco_litro": preco, "volume": vol, "valor_total": total,
                       "preco_medio_planilha": pm_planilha, "preco_final_planilha": pf_planilha,
                       "preco_desconto_planilha": pd_planilha, "plog_planilha": plog_planilha}
 
-    observacoes[uk] = st.text_area(f"Observação para {uk}", key=f"obs_{uk}", height=50)
+    obs_col, date_col = st.columns([3, 1])
+    with obs_col:
+        observacoes[uk] = st.text_area(f"Observação para {uk}", key=f"obs_{uk}", height=50)
+    with date_col:
+        datas_pagamento[uk] = st.date_input(
+            "📅 Data de Pagamento", value=None, key=f"dt_pgto_{uk}",
+            help="Informe a data real de pagamento para esta unidade."
+        )
 
     if uk in autonomia_data:
-        data_limite_total = autonomia_data[uk].get("data_limite_total")
-        if data_limite_total:
-            data_da_compra = data_limite_total - timedelta(days=4) # Exemplo de 4 dias de antecedência
-            todas_datas_compra.append(data_da_compra)
+        dl = autonomia_data[uk].get("data_limite_total")
+        if dl:
+            todas_datas_compra.append(dl - timedelta(days=4))
 
     st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
-    # Pacaraima
+    # ── Pacaraima ────────────────────────────────────────────────────────
     uk = "Pacaraima"
     cor   = UNIDADES[uk]["cor"]
     icone = UNIDADES[uk]["icone"]
     st.markdown(
         f"<span class='badge-unidade' style='background:{cor}22; color:{cor}; border:1px solid {cor}44;'>"
-        f"{icone} {uk}</span>",
-        unsafe_allow_html=True
+        f"{icone} {uk}</span>", unsafe_allow_html=True
     )
 
-    tipo_pacaraima = st.radio("Selecione o tipo de carga para Pacaraima:", ["Carga Completa", "Carga Parcial"], key="tipo_pacaraima_calc")
+    tipo_pacaraima = st.radio(
+        "Selecione o tipo de carga para Pacaraima:",
+        ["Carga Completa", "Carga Parcial"], key="tipo_pacaraima_calc"
+    )
 
-    pm_p_planilha = 0.0
-    pf_p_planilha = 0.0
-    pd_p_planilha = 0.0
-    plog_p_planilha = 0.0
-    data_preco_p_planilha = None
-
-    if tipo_pacaraima == "Carga Completa":
-        preco_info_p = precos_carregados.get("Pacaraima_Completa", {})
-        pm_p_planilha = preco_info_p.get("preco_medio", 0.0)
-        pf_p_planilha = preco_info_p.get("preco_final", 0.0)
-        pd_p_planilha = preco_info_p.get("preco_desconto", 0.0)
-        plog_p_planilha = preco_info_p.get("plog", 0.0)
-        data_preco_p_planilha = preco_info_p.get("data")
-    elif tipo_pacaraima == "Carga Parcial":
-        preco_info_p = precos_carregados.get("Pacaraima_Parcial", {})
-        pm_p_planilha = preco_info_p.get("preco_medio", 0.0)
-        pf_p_planilha = preco_info_p.get("preco_final", 0.0)
-        pd_p_planilha = preco_info_p.get("preco_desconto", 0.0)
-        plog_p_planilha = preco_info_p.get("plog", 0.0)
-        data_preco_p_planilha = preco_info_p.get("data")
+    chave_pac     = "Pacaraima_Completa" if tipo_pacaraima == "Carga Completa" else "Pacaraima_Parcial"
+    preco_info_p  = precos_carregados.get(chave_pac, {})
+    pm_p_planilha         = preco_info_p.get("preco_medio",    0.0)
+    pf_p_planilha         = preco_info_p.get("preco_final",    0.0)
+    pd_p_planilha         = preco_info_p.get("preco_desconto", 0.0)
+    plog_p_planilha       = preco_info_p.get("plog",           0.0)
+    data_preco_p_planilha = preco_info_p.get("data")
 
     if data_preco_p_planilha:
-        st.markdown(f"<p style='color:#8888aa; font-size:12px; margin-top:-8px;'>Último preço carregado em: {data_preco_p_planilha.strftime('%d/%m/%Y')}</p>", unsafe_allow_html=True)
+        st.markdown(
+            f"<p style='color:#8888aa; font-size:12px; margin-top:-8px;'>"
+            f"Último preço carregado em: {data_preco_p_planilha.strftime('%d/%m/%Y')}</p>",
+            unsafe_allow_html=True
+        )
     else:
         st.warning(f"Não foi possível carregar os preços mais recentes para Pacaraima ({tipo_pacaraima}).")
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.markdown(
-            f"<div style='background:#1e1e2e; border:1px solid #2a2a4a; border-radius:8px; "
-            f"padding:10px 14px; margin-top:26px;'>"
+            f"<div style='background:#1e1e2e; border:1px solid #2a2a4a; border-radius:8px; padding:10px 14px; margin-top:26px;'>"
             f"<div style='color:#8888aa; font-size:11px;'>Preço Médio (Pm)</div>"
             f"<div style='color:#e0e0f0; font-size:18px; font-weight:bold;'>R$ {fmt_br(pm_p_planilha, 4)}</div>"
-            f"</div>",
-            unsafe_allow_html=True
+            f"</div>", unsafe_allow_html=True
         )
     with c2:
         st.markdown(
-            f"<div style='background:#1e1e2e; border:1px solid #2a2a4a; border-radius:8px; "
-            f"padding:10px 14px; margin-top:26px;'>"
+            f"<div style='background:#1e1e2e; border:1px solid #2a2a4a; border-radius:8px; padding:10px 14px; margin-top:26px;'>"
             f"<div style='color:#8888aa; font-size:11px;'>Plog</div>"
             f"<div style='color:#e0e0f0; font-size:18px; font-weight:bold;'>R$ {fmt_br(plog_p_planilha, 4)}</div>"
-            f"</div>",
-            unsafe_allow_html=True
+            f"</div>", unsafe_allow_html=True
         )
     with c3:
-        vol_default = autonomia_data.get(uk, {}).get("vol_comprado", 0.0)
-        volume_pacaraima = st.number_input(f"Volume {tipo_pacaraima} (L)", min_value=0.0, step=1.0, format="%.0f", key=f"vol_{uk}_{tipo_pacaraima}", value=vol_default)
+        vol_default      = autonomia_data.get(uk, {}).get("vol_comprado", 0.0)
+        volume_pacaraima = st.number_input(
+            f"Volume {tipo_pacaraima} (L)", min_value=0.0, step=1.0, format="%.0f",
+            key=f"vol_{uk}_{tipo_pacaraima}", value=vol_default
+        )
     with c4:
-        preco_pacaraima = pd_p_planilha # Pacaraima (ambos) usam Preço Desconto
+        preco_pacaraima = pd_p_planilha
         total_pacaraima = preco_pacaraima * volume_pacaraima
         st.markdown(
-            f"<div style='background:{cor}15; border:1px solid {cor}44; border-radius:10px; "
-            f"padding:10px 14px; margin-top:26px;'>"
+            f"<div style='background:{cor}15; border:1px solid {cor}44; border-radius:10px; padding:10px 14px; margin-top:26px;'>"
             f"<div style='color:{cor}; font-size:11px; font-weight:600;'>PREÇO / LITRO</div>"
             f"<div style='color:#e0e0f0; font-size:20px; font-weight:bold;'>R$ {fmt_br(preco_pacaraima, 4)}</div>"
             f"<div style='color:{cor}; font-size:11px; font-weight:600; margin-top:8px;'>VALOR TOTAL</div>"
             f"<div style='color:#e0e0f0; font-size:20px; font-weight:bold;'>R$ {fmt_br(total_pacaraima, 2)}</div>"
-            f"</div>",
-            unsafe_allow_html=True
+            f"</div>", unsafe_allow_html=True
         )
+
     resultados[f"{uk}_{tipo_pacaraima.replace(' ', '_')}"] = {
         "preco_litro": preco_pacaraima, "volume": volume_pacaraima, "valor_total": total_pacaraima,
         "preco_medio_planilha": pm_p_planilha, "preco_final_planilha": pf_p_planilha,
         "preco_desconto_planilha": pd_p_planilha, "plog_planilha": plog_p_planilha
     }
-    # Zera o outro tipo para o total geral
-    if tipo_pacaraima == "Carga Completa":
-        resultados["Pacaraima_Parcial"] = {"preco_litro": 0.0, "volume": 0.0, "valor_total": 0.0, "preco_medio_planilha": 0.0, "preco_final_planilha": 0.0, "preco_desconto_planilha": 0.0, "plog_planilha": 0.0}
-    else:
-        resultados["Pacaraima_Completa"] = {"preco_litro": 0.0, "volume": 0.0, "valor_total": 0.0, "preco_medio_planilha": 0.0, "preco_final_planilha": 0.0, "preco_desconto_planilha": 0.0, "plog_planilha": 0.0}
+    vazio = {"preco_litro": 0.0, "volume": 0.0, "valor_total": 0.0,
+             "preco_medio_planilha": 0.0, "preco_final_planilha": 0.0,
+             "preco_desconto_planilha": 0.0, "plog_planilha": 0.0}
+    resultados["Pacaraima_Parcial"  if tipo_pacaraima == "Carga Completa" else "Pacaraima_Completa"] = vazio
 
-
-    observacoes[uk] = st.text_area(f"Observação para {uk} ({tipo_pacaraima})", key=f"obs_{uk}_{tipo_pacaraima}", height=50)
+    obs_col, date_col = st.columns([3, 1])
+    with obs_col:
+        observacoes[uk] = st.text_area(
+            f"Observação para {uk} ({tipo_pacaraima})", key=f"obs_{uk}_{tipo_pacaraima}", height=50
+        )
+    with date_col:
+        datas_pagamento[uk] = st.date_input(
+            "📅 Data de Pagamento", value=None, key=f"dt_pgto_{uk}",
+            help="Informe a data real de pagamento para esta unidade."
+        )
 
     if uk in autonomia_data:
-        data_limite_total = autonomia_data[uk].get("data_limite_total")
-        if data_limite_total:
-            data_da_compra = data_limite_total - timedelta(days=4)
-            todas_datas_compra.append(data_da_compra)
+        dl = autonomia_data[uk].get("data_limite_total")
+
+
+        if dl:
+            todas_datas_compra.append(dl - timedelta(days=4))
 
     st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
-    # Uiramutã
+    # ── Uiramutã ─────────────────────────────────────────────────────────
     uk = "Uiramutã"
     cor   = UNIDADES[uk]["cor"]
     icone = UNIDADES[uk]["icone"]
     st.markdown(
         f"<span class='badge-unidade' style='background:{cor}22; color:{cor}; border:1px solid {cor}44;'>"
-        f"{icone} {uk}</span>",
-        unsafe_allow_html=True
+        f"{icone} {uk}</span>", unsafe_allow_html=True
     )
 
-    tipo_uiramuta = st.radio("Selecione o tipo para Uiramutã:", ["FOB", "CIF"], key="tipo_uiramuta_calc")
+    tipo_uiramuta = st.radio(
+        "Selecione o tipo para Uiramutã:", ["FOB", "CIF"], key="tipo_uiramuta_calc"
+    )
 
-    pm_u_planilha = 0.0
-    pf_u_planilha = 0.0
-    pd_u_planilha = 0.0
-    plog_u_planilha = 0.0
-    data_preco_u_planilha = None
-
-    if tipo_uiramuta == "FOB":
-        preco_info_u = precos_carregados.get("Uiramutã_FOB", {})
-        pm_u_planilha = preco_info_u.get("preco_medio", 0.0)
-        pf_u_planilha = preco_info_u.get("preco_final", 0.0)
-        pd_u_planilha = preco_info_u.get("preco_desconto", 0.0)
-        plog_u_planilha = preco_info_u.get("plog", 0.0)
-        data_preco_u_planilha = preco_info_u.get("data")
-    elif tipo_uiramuta == "CIF":
-        preco_info_u = precos_carregados.get("Uiramutã_CIF", {})
-        pm_u_planilha = preco_info_u.get("preco_medio", 0.0)
-        pf_u_planilha = preco_info_u.get("preco_final", 0.0)
-        pd_u_planilha = preco_info_u.get("preco_desconto", 0.0)
-        plog_u_planilha = preco_info_u.get("plog", 0.0)
-        data_preco_u_planilha = preco_info_u.get("data")
+    chave_ui      = "Uiramutã_FOB" if tipo_uiramuta == "FOB" else "Uiramutã_CIF"
+    preco_info_u  = precos_carregados.get(chave_ui, {})
+    pm_u_planilha         = preco_info_u.get("preco_medio",    0.0)
+    pf_u_planilha         = preco_info_u.get("preco_final",    0.0)
+    pd_u_planilha         = preco_info_u.get("preco_desconto", 0.0)
+    plog_u_planilha       = preco_info_u.get("plog",           0.0)
+    data_preco_u_planilha = preco_info_u.get("data")
 
     if data_preco_u_planilha:
-        st.markdown(f"<p style='color:#8888aa; font-size:12px; margin-top:-8px;'>Último preço carregado em: {data_preco_u_planilha.strftime('%d/%m/%Y')}</p>", unsafe_allow_html=True)
+        st.markdown(
+            f"<p style='color:#8888aa; font-size:12px; margin-top:-8px;'>"
+            f"Último preço carregado em: {data_preco_u_planilha.strftime('%d/%m/%Y')}</p>",
+            unsafe_allow_html=True
+        )
     else:
         st.warning(f"Não foi possível carregar os preços mais recentes para Uiramutã ({tipo_uiramuta}).")
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.markdown(
-            f"<div style='background:#1e1e2e; border:1px solid #2a2a4a; border-radius:8px; "
-            f"padding:10px 14px; margin-top:26px;'>"
+            f"<div style='background:#1e1e2e; border:1px solid #2a2a4a; border-radius:8px; padding:10px 14px; margin-top:26px;'>"
             f"<div style='color:#8888aa; font-size:11px;'>Preço Médio (Pm)</div>"
             f"<div style='color:#e0e0f0; font-size:18px; font-weight:bold;'>R$ {fmt_br(pm_u_planilha, 4)}</div>"
-            f"</div>",
-            unsafe_allow_html=True
+            f"</div>", unsafe_allow_html=True
         )
     with c2:
         st.markdown(
-            f"<div style='background:#1e1e2e; border:1px solid #2a2a4a; border-radius:8px; "
-            f"padding:10px 14px; margin-top:26px;'>"
+            f"<div style='background:#1e1e2e; border:1px solid #2a2a4a; border-radius:8px; padding:10px 14px; margin-top:26px;'>"
             f"<div style='color:#8888aa; font-size:11px;'>Plog</div>"
             f"<div style='color:#e0e0f0; font-size:18px; font-weight:bold;'>R$ {fmt_br(plog_u_planilha, 4)}</div>"
-            f"</div>",
-            unsafe_allow_html=True
+            f"</div>", unsafe_allow_html=True
         )
     with c3:
-        vol_default = autonomia_data.get(uk, {}).get("vol_comprado", 0.0)
-        volume_uiramuta = st.number_input(f"Volume {tipo_uiramuta} (L)", min_value=0.0, step=1.0, format="%.0f", key=f"vol_{uk}_{tipo_uiramuta}", value=vol_default)
+        vol_default     = autonomia_data.get(uk, {}).get("vol_comprado", 0.0)
+        volume_uiramuta = st.number_input(
+            f"Volume {tipo_uiramuta} (L)", min_value=0.0, step=1.0, format="%.0f",
+            key=f"vol_{uk}_{tipo_uiramuta}", value=vol_default
+        )
     with c4:
-        preco_uiramuta = pf_u_planilha if tipo_uiramuta == "FOB" else pd_u_planilha # Uiramutã FOB usa Preço Final, CIF usa Preço Desconto
+        preco_uiramuta = pf_u_planilha if tipo_uiramuta == "FOB" else pd_u_planilha
         total_uiramuta = preco_uiramuta * volume_uiramuta
         st.markdown(
-            f"<div style='background:{cor}15; border:1px solid {cor}44; border-radius:10px; "
-            f"padding:10px 14px; margin-top:26px;'>"
+            f"<div style='background:{cor}15; border:1px solid {cor}44; border-radius:10px; padding:10px 14px; margin-top:26px;'>"
             f"<div style='color:{cor}; font-size:11px; font-weight:600;'>PREÇO / LITRO</div>"
             f"<div style='color:#e0e0f0; font-size:20px; font-weight:bold;'>R$ {fmt_br(preco_uiramuta, 4)}</div>"
             f"<div style='color:{cor}; font-size:11px; font-weight:600; margin-top:8px;'>VALOR TOTAL</div>"
             f"<div style='color:#e0e0f0; font-size:20px; font-weight:bold;'>R$ {fmt_br(total_uiramuta, 2)}</div>"
-            f"</div>",
-            unsafe_allow_html=True
+            f"</div>", unsafe_allow_html=True
         )
+
     resultados[f"{uk}_{tipo_uiramuta}"] = {
         "preco_litro": preco_uiramuta, "volume": volume_uiramuta, "valor_total": total_uiramuta,
         "preco_medio_planilha": pm_u_planilha, "preco_final_planilha": pf_u_planilha,
         "preco_desconto_planilha": pd_u_planilha, "plog_planilha": plog_u_planilha
     }
-    # Zera o outro tipo para o total geral
-    if tipo_uiramuta == "FOB":
-        resultados["Uiramutã_CIF"] = {"preco_litro": 0.0, "volume": 0.0, "valor_total": 0.0, "preco_medio_planilha": 0.0, "preco_final_planilha": 0.0, "preco_desconto_planilha": 0.0, "plog_planilha": 0.0}
-    else:
-        resultados["Uiramutã_FOB"] = {"preco_litro": 0.0, "volume": 0.0, "valor_total": 0.0, "preco_medio_planilha": 0.0, "preco_final_planilha": 0.0, "preco_desconto_planilha": 0.0, "plog_planilha": 0.0}
+    vazio = {"preco_litro": 0.0, "volume": 0.0, "valor_total": 0.0,
+             "preco_medio_planilha": 0.0, "preco_final_planilha": 0.0,
+             "preco_desconto_planilha": 0.0, "plog_planilha": 0.0}
+    resultados["Uiramutã_CIF" if tipo_uiramuta == "FOB" else "Uiramutã_FOB"] = vazio
 
-    observacoes[uk] = st.text_area(f"Observação para {uk} ({tipo_uiramuta})", key=f"obs_{uk}_{tipo_uiramuta}", height=50)
+    obs_col, date_col = st.columns([3, 1])
+    with obs_col:
+        observacoes[uk] = st.text_area(
+            f"Observação para {uk} ({tipo_uiramuta})", key=f"obs_{uk}_{tipo_uiramuta}", height=50
+        )
+    with date_col:
+        datas_pagamento[uk] = st.date_input(
+            "📅 Data de Pagamento", value=None, key=f"dt_pgto_{uk}",
+            help="Informe a data real de pagamento para esta unidade."
+        )
 
     if uk in autonomia_data:
-        data_limite_total = autonomia_data[uk].get("data_limite_total")
-        if data_limite_total:
-            data_da_compra = data_limite_total - timedelta(days=4)
-            todas_datas_compra.append(data_da_compra)
+        dl = autonomia_data[uk].get("data_limite_total")
+        if dl:
+            todas_datas_compra.append(dl - timedelta(days=4))
 
     st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
+    # ── Total Geral ───────────────────────────────────────────────────────
     total_geral = sum(r["valor_total"] for r in resultados.values())
     st.markdown(
         f"<div class='total-box'><p>Soma de todas as unidades</p>"
         f"<h2>💰 R$ {fmt_br(total_geral, 2)}</h2>"
         f"<p style='font-size:13px; margin-top:10px;'>"
         f"🔵 Amajari: R$ {fmt_br(resultados['Amajari']['valor_total'], 2)} &nbsp;|&nbsp; "
-        f"🟠 Pacaraima {tipo_pacaraima}: R$ {fmt_br(total_pacaraima, 2) if total_pacaraima is not None else '—'} &nbsp;|&nbsp; "
-        f"🟢 Uiramutã {tipo_uiramuta}: R$ {fmt_br(total_uiramuta, 2) if total_uiramuta is not None else '—'}</p></div>",
+        f"🟠 Pacaraima {tipo_pacaraima}: R$ {fmt_br(total_pacaraima, 2)} &nbsp;|&nbsp; "
+        f"🟢 Uiramutã {tipo_uiramuta}: R$ {fmt_br(total_uiramuta, 2)}</p></div>",
         unsafe_allow_html=True
     )
     st.markdown("<br>", unsafe_allow_html=True)
 
+    # ── Resumo detalhado ──────────────────────────────────────────────────
     with st.expander("📋 Ver resumo detalhado"):
-        rows = []
 
         menor_data_compra_str = "—"
         if todas_datas_compra:
-            menor_data_compra = min(todas_datas_compra)
-            menor_data_compra_str = menor_data_compra.strftime("%d/%m/%Y")
+            menor_data_compra_str = min(todas_datas_compra).strftime("%d/%m/%Y")
+
+        def fmt_data_pgto(nome):
+            dt = datas_pagamento.get(nome)
+            if dt is None:
+                return "—"
+            return dt.strftime("%d/%m/%Y") if dt else "—"
+
+        rows = []
 
         # Amajari
-        unit_name = "Amajari"
-        volume = resultados[unit_name]['volume']
-        valor_total = resultados[unit_name]['valor_total']
-        obs = observacoes.get(unit_name, "—")
-        preco_litro_calc = resultados[unit_name]['preco_litro'] # Preço Desconto
-
         rows.append({
-            "Unidade": unit_name,
-            "Tipo": "Padrão",
-            "Preço/Litro (R$)": fmt_br(preco_litro_calc, 4),
-            "Volume (L)": fmt_br(volume, 0),
-            "Total (R$)": fmt_br(valor_total, 2),
-            "Data da Compra": menor_data_compra_str,
-            "Observação": obs
+            "Unidade":            "Amajari",
+            "Tipo":               "Padrão",
+            "Preço/Litro (R$)":   fmt_br(resultados["Amajari"]["preco_litro"], 4),
+            "Volume (L)":         fmt_br(resultados["Amajari"]["volume"], 0),
+            "Total (R$)":         fmt_br(resultados["Amajari"]["valor_total"], 2),
+            "Previsão de Compra": menor_data_compra_str,
+            "Data de Pagamento":  fmt_data_pgto("Amajari"),
+            "Observação":         observacoes.get("Amajari", "—"),
         })
 
         # Pacaraima
-        unit_name = "Pacaraima"
-        # Pega os dados do tipo de carga selecionado
-        key_pacaraima = f"{unit_name}_{tipo_pacaraima.replace(' ', '_')}"
-        volume = resultados[key_pacaraima]['volume']
-        valor_total = resultados[key_pacaraima]['valor_total']
-        obs = observacoes.get(unit_name, "—") # Observação é geral para Pacaraima
-        preco_litro_calc = resultados[key_pacaraima]['preco_litro'] # Preço Desconto
-
+        key_pac = f"Pacaraima_{tipo_pacaraima.replace(' ', '_')}"
         rows.append({
-            "Unidade": unit_name,
-            "Tipo": tipo_pacaraima,
-            "Preço/Litro (R$)": fmt_br(preco_litro_calc, 4),
-            "Volume (L)": fmt_br(volume, 0),
-            "Total (R$)": fmt_br(valor_total, 2),
-            "Data da Compra": menor_data_compra_str,
-            "Observação": obs
+            "Unidade":            "Pacaraima",
+            "Tipo":               tipo_pacaraima,
+            "Preço/Litro (R$)":   fmt_br(resultados[key_pac]["preco_litro"], 4),
+            "Volume (L)":         fmt_br(resultados[key_pac]["volume"], 0),
+            "Total (R$)":         fmt_br(resultados[key_pac]["valor_total"], 2),
+            "Previsão de Compra": menor_data_compra_str,
+            "Data de Pagamento":  fmt_data_pgto("Pacaraima"),
+            "Observação":         observacoes.get("Pacaraima", "—"),
         })
 
         # Uiramutã
-        unit_name = "Uiramutã"
-        volume = resultados[f"{unit_name}_{tipo_uiramuta}"]['volume']
-        valor_total = resultados[f"{unit_name}_{tipo_uiramuta}"]['valor_total']
-        obs = observacoes.get(unit_name, "—")
-        preco_litro_calc = resultados[f"{unit_name}_{tipo_uiramuta}"]['preco_litro'] # Preço Final ou Preço Desconto
-
+        key_ui = f"Uiramutã_{tipo_uiramuta}"
         rows.append({
-            "Unidade": unit_name,
-            "Tipo": tipo_uiramuta,
-            "Preço/Litro (R$)": fmt_br(preco_litro_calc, 4),
-            "Volume (L)": fmt_br(volume, 0),
-            "Total (R$)": fmt_br(valor_total, 2),
-            "Data da Compra": menor_data_compra_str,
-            "Observação": obs
+            "Unidade":            "Uiramutã",
+            "Tipo":               tipo_uiramuta,
+            "Preço/Litro (R$)":   fmt_br(resultados[key_ui]["preco_litro"], 4),
+            "Volume (L)":         fmt_br(resultados[key_ui]["volume"], 0),
+            "Total (R$)":         fmt_br(resultados[key_ui]["valor_total"], 2),
+            "Previsão de Compra": menor_data_compra_str,
+            "Data de Pagamento":  fmt_data_pgto("Uiramutã"),
+            "Observação":         observacoes.get("Uiramutã", "—"),
         })
 
+        # Linha total
         rows.append({
-            "Unidade": "TOTAL", "Tipo": "—",
-            "Preço/Litro (R$)": "—",
-            "Volume (L)": "—", "Total (R$)": fmt_br(total_geral, 2),
-            "Data da Compra": menor_data_compra_str if menor_data_compra_str != "—" else "—",
-            "Observação": "—"
+            "Unidade":            "TOTAL",
+            "Tipo":               "—",
+            "Preço/Litro (R$)":   "—",
+            "Volume (L)":         "—",
+            "Total (R$)":         fmt_br(total_geral, 2),
+            "Previsão de Compra": menor_data_compra_str,
+            "Data de Pagamento":  "—",
+            "Observação":         "—",
         })
 
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
 
 # ─────────────────────────────────────────
 # COMPRA DE COMBUSTÍVEL
@@ -1163,8 +1112,8 @@ def calculadora(precos_carregados):
 def aba_compra_combustivel(df_notas, tipo_filtro, periodo_sel):
     st.markdown("## ⛽ Compra de Combustível")
     st.markdown(
-        f"<p style='color:#8888aa; font-size:13px; margin-top:-10px;'>"
-        f"Dados de notas fiscais de compra de combustível.</p>",
+        "<p style='color:#8888aa; font-size:13px; margin-top:-10px;'>"
+        "Dados de notas fiscais de compra de combustível.</p>",
         unsafe_allow_html=True
     )
     st.markdown("<hr class='separador'>", unsafe_allow_html=True)
@@ -1173,26 +1122,23 @@ def aba_compra_combustivel(df_notas, tipo_filtro, periodo_sel):
         st.warning("Não foi possível carregar os dados de notas de combustível ou não há registros.")
         return
 
-    # Aplicar o filtro de período primeiro
     df_filtrado_periodo = filtrar(df_notas, tipo_filtro, periodo_sel)
 
     if df_filtrado_periodo.empty:
         st.warning(f"Não há dados de compra de combustível para o período selecionado ({periodo_sel}).")
         return
 
-    # Filtro por Localidade (aplicado após o filtro de período)
-    localidades_unicas = ["Todas"] + sorted(df_filtrado_periodo["localidade"].unique().tolist())
-    localidade_selecionada = st.selectbox("Filtrar por Localidade:", localidades_unicas, key="filtro_localidade_notas")
+    localidades_unicas      = ["Todas"] + sorted(df_filtrado_periodo["localidade"].unique().tolist())
+    localidade_selecionada  = st.selectbox("Filtrar por Localidade:", localidades_unicas, key="filtro_localidade_notas")
 
     df_final = df_filtrado_periodo.copy()
     if localidade_selecionada != "Todas":
         df_final = df_final[df_final["localidade"] == localidade_selecionada]
 
     if df_final.empty:
-        st.warning(f"Não há dados de compra de combustível para a localidade '{localidade_selecionada}' no período selecionado.")
+        st.warning(f"Não há dados para a localidade '{localidade_selecionada}' no período selecionado.")
         return
 
-    # Resumos
     total_qtd_combustivel = df_final["qtd_combustivel"].sum()
     total_valor_gasto     = df_final["valor_total_nota"].sum()
 
@@ -1203,24 +1149,23 @@ def aba_compra_combustivel(df_notas, tipo_filtro, periodo_sel):
         st.metric("Valor Total Gasto", f"R$ {fmt_br(total_valor_gasto, 2)}")
 
     st.markdown("<br>", unsafe_allow_html=True)
-
-    # Tabela de dados
     st.markdown("### Detalhes das Compras")
-    df_exibir = df_final.copy()
-    df_exibir["data"] = df_exibir["data"].dt.strftime("%d/%m/%Y")
-    df_exibir["qtd_combustivel"] = df_exibir["qtd_combustivel"].apply(lambda v: fmt_br(v, 0))
-    df_exibir["valor_total_nota"] = df_exibir["valor_total_nota"].apply(lambda v: fmt_br(v, 2))
-    df_exibir["preco_combustivel"] = df_exibir["preco_combustivel"].apply(lambda v: fmt_br(v, 4))
 
-    nomes_colunas = {
-        "data": "Data Emissão",
-        "qtd_combustivel": "Qtd. Combustível (L)",
-        "nota_fiscal": "Nota Fiscal",
+    df_exibir = df_final.copy()
+    df_exibir["data"]             = df_exibir["data"].dt.strftime("%d/%m/%Y")
+    df_exibir["qtd_combustivel"]  = df_exibir["qtd_combustivel"].apply(lambda v: fmt_br(v, 0))
+    df_exibir["valor_total_nota"] = df_exibir["valor_total_nota"].apply(lambda v: fmt_br(v, 2))
+    df_exibir["preco_combustivel"]= df_exibir["preco_combustivel"].apply(lambda v: fmt_br(v, 4))
+
+    df_exibir.rename(columns={
+        "data":             "Data Emissão",
+        "qtd_combustivel":  "Qtd. Combustível (L)",
+        "nota_fiscal":      "Nota Fiscal",
         "valor_total_nota": "Valor Total Nota (R$)",
-        "localidade": "Localidade",
-        "preco_combustivel": "Preço Combustível (R$/L)"
-    }
-    df_exibir.rename(columns=nomes_colunas, inplace=True)
+        "localidade":       "Localidade",
+        "preco_combustivel":"Preço Combustível (R$/L)",
+    }, inplace=True)
+
     st.dataframe(df_exibir, use_container_width=True, hide_index=True)
 
 
@@ -1232,8 +1177,7 @@ def main():
         st.markdown("## ⚡ Painel Energético")
         st.markdown("---")
         st.markdown("**Filtrar por:**")
-        tipo_filtro = st.radio("", ["Ano", "Mês", "Semana"], index=1,
-                               label_visibility="collapsed")
+        tipo_filtro = st.radio("", ["Ano", "Mês", "Semana"], index=1, label_visibility="collapsed")
         if st.button("🔄 Recarregar dados"):
             st.cache_data.clear()
             st.rerun()
@@ -1254,10 +1198,9 @@ def main():
             for e in erros:
                 st.warning(e)
 
-    periodo_sel = None
-    # Usar df_notas_combustivel para gerar períodos se for o mais completo ou o único disponível
-    # Ou usar o primeiro df de dados de consumo/energia se houver
+    periodo_sel     = None
     df_para_periodos = None
+
     if df_notas_combustivel is not None and not df_notas_combustivel.empty:
         df_para_periodos = df_notas_combustivel
     elif next(iter(dados.values()), None) is not None:
@@ -1274,7 +1217,6 @@ def main():
     else:
         st.sidebar.warning("Nenhum dado disponível para gerar períodos de filtro.")
 
-
     tab_amajari, tab_pacaraima, tab_uiramuta, tab_autonomia, tab_calc, tab_compras = st.tabs([
         "🔵 Amajari", "🟠 Pacaraima", "🟢 Uiramutã", "🛢️ Autonomia", "🧮 Calculadora", "⛽ Compra Combustível"
     ])
@@ -1283,7 +1225,6 @@ def main():
         calculadora(precos_carregados)
 
     with tab_compras:
-        # Passa o tipo_filtro e periodo_sel para a aba de compras
         aba_compra_combustivel(df_notas_combustivel, tipo_filtro, periodo_sel)
 
     if not dados:
