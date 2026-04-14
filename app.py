@@ -1039,7 +1039,7 @@ def calculadora(precos_carregados):
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ── Resumo detalhado ──────────────────────────────────────────────────
-    with st.expander("📋 Ver resumo detalhado"):
+    with st.expander("📋 Programação de Compras Semanal - Abril/2026"):
 
         menor_data_compra_str = "—"
         if todas_datas_compra:
