@@ -18,6 +18,8 @@ CONFIG_PLANILHAS = {
         "col_data_e": "DATA", "col_energia": "ENERGIA GERADA TOTAL MWh",
         "dias_antecedencia": 2,
         "aba_preco_desconto": "Preço_Amajari",
+        "aba_geradores": "Geradores_Amajari",
+        "col_data_g": "Data", "col_energia_geradores": "Energia Geradores",
     },
     "Pacaraima": {
         "aba_consumo": "Pacaraima", "aba_energia": "Energia_Pacaraima",
@@ -26,6 +28,8 @@ CONFIG_PLANILHAS = {
         "dias_antecedencia": 2,
         "aba_preco_completa": "Preço_Pacaraima",
         "aba_preco_parcial": "Preço_Pacaraima_Parcial",
+        "aba_geradores": "Geradores_Pacaraima",
+        "col_data_g": "Data", "col_energia_geradores": "Energia Geradores",
     },
     "Uiramutã": {
         "aba_consumo": "Uiramutã", "aba_energia": "Energia_Uiramutã",
@@ -71,10 +75,11 @@ UNIDADES = {
     "Uiramutã":  {"cor": "#22c55e", "icone": "🟢"},
 }
 
-COR_CONSUMO = "#60a5fa"
-COR_ENERGIA = "#facc15"
-DESCONTO    = 1.0530
-BOMBEAMENTO = 0.135
+COR_CONSUMO      = "#60a5fa"
+COR_ENERGIA      = "#facc15"
+COR_CONS_ESP_GER = "#a78bfa"
+DESCONTO         = 1.0530
+BOMBEAMENTO      = 0.135
 
 
 def fmt_br(valor, decimais=0):
@@ -145,7 +150,7 @@ def ler_aba_preco_excel(xl_file, sheet_name):
             break
 
     if header_row is None:
-        return None, f"Cabeçalho de preços não encontrado na aba '{sheet_name}'. Colunas esperadas: {cols_alvo}"
+        return None, f"Cabeçalho de preços não encontrado na aba '{sheet_name}'."
 
     df = pd.read_excel(xl_file, sheet_name=sheet_name, header=header_row)
 
@@ -156,7 +161,7 @@ def ler_aba_preco_excel(xl_file, sheet_name):
     col_plog_found  = encontrar_coluna(df.columns, "PLOG")
 
     if not all([col_data_found, col_pm_found, col_pf_found, col_desc_found, col_plog_found]):
-        return None, f"Algumas colunas de preço não encontradas na aba '{sheet_name}'. Disponíveis: {list(df.columns)}"
+        return None, f"Colunas de preço não encontradas na aba '{sheet_name}'. Disponíveis: {list(df.columns)}"
 
     df = df[[col_data_found, col_pm_found, col_pf_found, col_desc_found, col_plog_found]].copy()
     df.columns = ["data", "preco_medio", "preco_final", "preco_desconto", "plog"]
@@ -165,10 +170,11 @@ def ler_aba_preco_excel(xl_file, sheet_name):
     df["preco_final"]    = pd.to_numeric(df["preco_final"], errors="coerce")
     df["preco_desconto"] = pd.to_numeric(df["preco_desconto"], errors="coerce")
     df["plog"]           = pd.to_numeric(df["plog"], errors="coerce")
-    df = df.dropna(subset=["data", "preco_medio", "preco_final", "preco_desconto", "plog"]).sort_values("data", ascending=False).reset_index(drop=True)
+    df = df.dropna(subset=["data", "preco_medio", "preco_final", "preco_desconto", "plog"])
+    df = df.sort_values("data", ascending=False).reset_index(drop=True)
 
     if df.empty:
-        return None, f"Nenhum dado válido encontrado na aba '{sheet_name}' após processamento."
+        return None, f"Nenhum dado válido encontrado na aba '{sheet_name}'."
 
     return df.iloc[0], None
 
@@ -186,7 +192,7 @@ def ler_aba_notas_combustivel(xl_file, sheet_name="Notas_Combustível"):
             break
 
     if header_row is None:
-        return None, f"Cabeçalho de notas de combustível não encontrado na aba '{sheet_name}'. Colunas esperadas: {cols_alvo}"
+        return None, f"Cabeçalho não encontrado na aba '{sheet_name}'."
 
     df = pd.read_excel(xl_file, sheet_name=sheet_name, header=header_row)
 
@@ -198,19 +204,20 @@ def ler_aba_notas_combustivel(xl_file, sheet_name="Notas_Combustível"):
     col_preco_comb_found  = encontrar_coluna(df.columns, "PREÇO COMBUSTÍVEL")
 
     if not all([col_data_found, col_qtd_found, col_nf_found, col_valor_total_found, col_localidade_found, col_preco_comb_found]):
-        return None, f"Algumas colunas de notas de combustível não encontradas na aba '{sheet_name}'. Disponíveis: {list(df.columns)}"
+        return None, f"Colunas não encontradas na aba '{sheet_name}'. Disponíveis: {list(df.columns)}"
 
     df = df[[col_data_found, col_qtd_found, col_nf_found, col_valor_total_found, col_localidade_found, col_preco_comb_found]].copy()
     df.columns = ["data", "qtd_combustivel", "nota_fiscal", "valor_total_nota", "localidade", "preco_combustivel"]
-    df["data"]             = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
-    df["qtd_combustivel"]  = pd.to_numeric(df["qtd_combustivel"], errors="coerce")
-    df["valor_total_nota"] = pd.to_numeric(df["valor_total_nota"], errors="coerce")
-    df["preco_combustivel"]= pd.to_numeric(df["preco_combustivel"], errors="coerce")
-    df["localidade"]       = df["localidade"].astype(str).apply(norm)
-    df = df.dropna(subset=["data", "qtd_combustivel", "valor_total_nota", "localidade"]).sort_values("data", ascending=False).reset_index(drop=True)
+    df["data"]              = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
+    df["qtd_combustivel"]   = pd.to_numeric(df["qtd_combustivel"], errors="coerce")
+    df["valor_total_nota"]  = pd.to_numeric(df["valor_total_nota"], errors="coerce")
+    df["preco_combustivel"] = pd.to_numeric(df["preco_combustivel"], errors="coerce")
+    df["localidade"]        = df["localidade"].astype(str).apply(norm)
+    df = df.dropna(subset=["data", "qtd_combustivel", "valor_total_nota", "localidade"])
+    df = df.sort_values("data", ascending=False).reset_index(drop=True)
 
     if df.empty:
-        return None, f"Nenhum dado válido encontrado na aba '{sheet_name}' após processamento."
+        return None, f"Nenhum dado válido encontrado na aba '{sheet_name}'."
 
     return df, None
 
@@ -221,14 +228,12 @@ def carregar_dados():
     erros = []
     xl_consumo = None
     xl_energia = None
-    xl_precos  = None
     xl_notas   = None
 
     try:
         r = requests.get(converter_link(LINK_CONSUMO), timeout=20)
         r.raise_for_status()
         xl_consumo = pd.ExcelFile(io.BytesIO(r.content))
-        xl_precos  = xl_consumo
     except Exception as e:
         erros.append(f"Erro ao baixar planilha de consumo/preços: {e}")
 
@@ -257,16 +262,16 @@ def carregar_dados():
             else:
                 df_notas_combustivel = df_n
         except Exception as e:
-            erros.append(f"Aba de notas de combustível 'Notas_Combustível': {e}")
+            erros.append(f"Aba notas de combustível: {e}")
 
     for unidade, cfg in CONFIG_PLANILHAS.items():
-        df_consumo = None
-        df_energia = None
+        df_consumo   = None
+        df_energia   = None
+        df_geradores = None
 
         if xl_consumo is not None:
             try:
-                df_c, erro = ler_aba_excel(xl_consumo, cfg["aba_consumo"],
-                                           cfg["col_data_c"], cfg["col_consumo"])
+                df_c, erro = ler_aba_excel(xl_consumo, cfg["aba_consumo"], cfg["col_data_c"], cfg["col_consumo"])
                 if erro:
                     erros.append(f"{unidade} — Consumo: {erro}")
                 else:
@@ -276,8 +281,7 @@ def carregar_dados():
 
         if xl_energia is not None:
             try:
-                df_e, erro = ler_aba_excel(xl_energia, cfg["aba_energia"],
-                                           cfg["col_data_e"], cfg["col_energia"])
+                df_e, erro = ler_aba_excel(xl_energia, cfg["aba_energia"], cfg["col_data_e"], cfg["col_energia"])
                 if erro:
                     erros.append(f"{unidade} — Energia: {erro}")
                 else:
@@ -285,21 +289,47 @@ def carregar_dados():
             except Exception as e:
                 erros.append(f"{unidade} — Aba energia: {e}")
 
+            aba_ger = cfg.get("aba_geradores")
+            col_dg  = cfg.get("col_data_g")
+            col_eg  = cfg.get("col_energia_geradores")
+            if aba_ger and col_dg and col_eg:
+                try:
+                    df_g, erro = ler_aba_excel(xl_energia, aba_ger, col_dg, col_eg)
+                    if erro:
+                        erros.append(f"{unidade} — Geradores: {erro}")
+                    else:
+                        df_geradores = df_g.rename(columns={"valor": "energia_geradores"})
+                except Exception as e:
+                    erros.append(f"{unidade} — Aba geradores '{aba_ger}': {e}")
+
         if df_consumo is not None and df_energia is not None:
             df_m = pd.merge(df_consumo, df_energia, on="data", how="inner")
             df_m["consumo_especifico"] = (
                 df_m["consumo"] / df_m["energia_gerada"]
             ).replace([float("inf"), float("-inf")], None)
-            dados[unidade] = df_m.sort_values("data").reset_index(drop=True)
         elif df_consumo is not None:
-            df_consumo["energia_gerada"]     = None
-            df_consumo["consumo_especifico"] = None
-            dados[unidade] = df_consumo
+            df_m = df_consumo.copy()
+            df_m["energia_gerada"]     = None
+            df_m["consumo_especifico"] = None
         elif df_energia is not None:
-            df_energia["consumo"]            = None
-            df_energia["consumo_especifico"] = None
-            dados[unidade] = df_energia
+            df_m = df_energia.copy()
+            df_m["consumo"]            = None
+            df_m["consumo_especifico"] = None
+        else:
+            continue
 
+        if df_geradores is not None and not df_geradores.empty:
+            df_m = pd.merge(df_m, df_geradores, on="data", how="left")
+            df_m["cons_esp_geradores"] = (
+                df_m["consumo"] / df_m["energia_geradores"]
+            ).replace([float("inf"), float("-inf")], None)
+        else:
+            df_m["energia_geradores"]  = None
+            df_m["cons_esp_geradores"] = None
+
+        dados[unidade] = df_m.sort_values("data").reset_index(drop=True)
+
+        xl_precos = xl_consumo
         if xl_precos is not None:
             if unidade == "Amajari":
                 aba_preco = cfg.get("aba_preco_desconto")
@@ -420,7 +450,7 @@ def grafico_consumo_especifico(df, cor):
     r, g, b = int(cor[1:3], 16), int(cor[3:5], 16), int(cor[5:7], 16)
     fig = go.Figure()
     fig.add_trace(go.Bar(
-        x=serie["data"], y=serie[coluna], name="Cons. Específico",
+        x=serie["data"], y=serie[coluna], name="Cons. Esp. Usina",
         marker_color=f"rgba({r},{g},{b},0.80)", marker_line_color=cor, marker_line_width=0.8,
         hovertemplate="<b>%{x|%d/%m/%Y}</b><br>Cons. Específico: %{y:,.2f} L/MWh<extra></extra>",
     ))
@@ -430,6 +460,30 @@ def grafico_consumo_especifico(df, cor):
         line=dict(color="#f97316", width=2.5, dash="dash"), hoverinfo="skip",
     ))
     lay = layout_base(f"Consumo Específico — Média: <b>{fmt_br(media, 2)} L/MWh</b>", "L/MWh")
+    lay["bargap"] = 0.15
+    fig.update_layout(**lay)
+    return fig
+
+
+def grafico_cons_esp_geradores(df, cor):
+    coluna = "cons_esp_geradores"
+    if coluna not in df.columns or df[coluna].dropna().empty:
+        return None
+    serie = df.dropna(subset=[coluna])
+    media = serie[coluna].mean()
+    r, g, b = int(cor[1:3], 16), int(cor[3:5], 16), int(cor[5:7], 16)
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=serie["data"], y=serie[coluna], name="Cons. Esp. Geradores",
+        marker_color=f"rgba({r},{g},{b},0.80)", marker_line_color=cor, marker_line_width=0.8,
+        hovertemplate="<b>%{x|%d/%m/%Y}</b><br>Cons. Esp. Geradores: %{y:,.2f} L/MWh<extra></extra>",
+    ))
+    fig.add_trace(go.Scatter(
+        x=[serie["data"].min(), serie["data"].max()], y=[media, media],
+        mode="lines", name=f"Média: {fmt_br(media, 2)} L/MWh",
+        line=dict(color="#f97316", width=2.5, dash="dash"), hoverinfo="skip",
+    ))
+    lay = layout_base(f"Cons. Esp. Grupos Geradores — Média: <b>{fmt_br(media, 2)} L/MWh</b>", "L/MWh")
     lay["bargap"] = 0.15
     fig.update_layout(**lay)
     return fig
@@ -448,19 +502,39 @@ def secao_unidade(nome, df, tipo_filtro, periodo):
         st.warning("Sem dados para o período selecionado.")
         return
 
-    tem_consumo   = "consumo"        in df_f.columns and df_f["consumo"].notna().any()
-    tem_energia   = "energia_gerada" in df_f.columns and df_f["energia_gerada"].notna().any()
-    consumo_total = float(df_f["consumo"].sum())        if tem_consumo else None
-    media_consumo = float(df_f["consumo"].mean())       if tem_consumo else None
-    energia_total = float(df_f["energia_gerada"].sum()) if tem_energia else None
-    cons_esp      = (consumo_total / energia_total) if (consumo_total and energia_total and energia_total > 0) else None
+    tem_consumo   = "consumo"           in df_f.columns and df_f["consumo"].notna().any()
+    tem_energia   = "energia_gerada"    in df_f.columns and df_f["energia_gerada"].notna().any()
+    tem_geradores = "energia_geradores" in df_f.columns and df_f["energia_geradores"].notna().any()
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    with c1: st.metric("⛽ Consumo Total",    f"{fmt_br(consumo_total, 0)} L")
-    with c2: st.metric("📊 Média de Consumo", f"{fmt_br(media_consumo, 0)} L/dia")
-    with c3: st.metric("⚡ Energia Gerada",   f"{fmt_br(energia_total, 2)} MWh")
-    with c4: st.metric("🔢 Cons. Específico", f"{fmt_br(cons_esp, 2)} L/MWh")
-    with c5: st.metric("📅 Registros",        str(len(df_f)))
+    consumo_total     = float(df_f["consumo"].sum())              if tem_consumo   else None
+    media_consumo     = float(df_f["consumo"].mean())             if tem_consumo   else None
+    energia_total     = float(df_f["energia_gerada"].sum())       if tem_energia   else None
+    energia_ger_total = float(df_f["energia_geradores"].sum())    if tem_geradores else None
+
+    cons_esp = (
+        consumo_total / energia_total
+        if consumo_total and energia_total and energia_total > 0 else None
+    )
+    cons_esp_ger = (
+        consumo_total / energia_ger_total
+        if consumo_total and energia_ger_total and energia_ger_total > 0 else None
+    )
+
+    if tem_geradores:
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        with c1: st.metric("⛽ Consumo Total",        f"{fmt_br(consumo_total, 0)} L")
+        with c2: st.metric("📊 Média de Consumo",     f"{fmt_br(media_consumo, 0)} L/dia")
+        with c3: st.metric("⚡ Energia Gerada",       f"{fmt_br(energia_total, 2)} MWh")
+        with c4: st.metric("🔢 Cons. Esp. Usina",     f"{fmt_br(cons_esp, 2)} L/MWh")
+        with c5: st.metric("⚙️ Cons. Esp. Geradores", f"{fmt_br(cons_esp_ger, 2)} L/MWh")
+        with c6: st.metric("📅 Registros",            str(len(df_f)))
+    else:
+        c1, c2, c3, c4, c5 = st.columns(5)
+        with c1: st.metric("⛽ Consumo Total",    f"{fmt_br(consumo_total, 0)} L")
+        with c2: st.metric("📊 Média de Consumo", f"{fmt_br(media_consumo, 0)} L/dia")
+        with c3: st.metric("⚡ Energia Gerada",   f"{fmt_br(energia_total, 2)} MWh")
+        with c4: st.metric("🔢 Cons. Esp. Usina", f"{fmt_br(cons_esp, 2)} L/MWh")
+        with c5: st.metric("📅 Registros",        str(len(df_f)))
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -478,23 +552,48 @@ def secao_unidade(nome, df, tipo_filtro, periodo):
         else:
             st.info("Dados de energia indisponíveis.")
 
-    cols_esp = st.columns(2)
-    with cols_esp[0]:
-        fig_esp = grafico_consumo_especifico(df_f, cor)
-        if fig_esp is not None:
-            st.plotly_chart(fig_esp, use_container_width=True)
-        else:
-            st.info("Dados de cons. específico indisponíveis.")
+    if tem_geradores:
+        col3, col4 = st.columns(2)
+        with col3:
+            fig_esp = grafico_consumo_especifico(df_f, cor)
+            if fig_esp is not None:
+                st.plotly_chart(fig_esp, use_container_width=True)
+            else:
+                st.info("Dados de cons. específico indisponíveis.")
+        with col4:
+            fig_ger = grafico_cons_esp_geradores(df_f, COR_CONS_ESP_GER)
+            if fig_ger is not None:
+                st.plotly_chart(fig_ger, use_container_width=True)
+            else:
+                st.info("Dados de cons. esp. geradores indisponíveis.")
+    else:
+        cols_esp = st.columns(2)
+        with cols_esp[0]:
+            fig_esp = grafico_consumo_especifico(df_f, cor)
+            if fig_esp is not None:
+                st.plotly_chart(fig_esp, use_container_width=True)
+            else:
+                st.info("Dados de cons. específico indisponíveis.")
 
     with st.expander("📋 Ver dados do período"):
-        cols_exib = [c for c in ["data", "consumo", "energia_gerada", "consumo_especifico"] if c in df_f.columns]
+        cols_base = ["data", "consumo", "energia_gerada", "consumo_especifico"]
+        cols_ger  = ["energia_geradores", "cons_esp_geradores"] if tem_geradores else []
+        cols_exib = [c for c in cols_base + cols_ger if c in df_f.columns]
+
         df_exibir = df_f[cols_exib].copy()
         df_exibir["data"] = df_exibir["data"].dt.strftime("%d/%m/%Y")
-        for col in ["consumo", "energia_gerada", "consumo_especifico"]:
+        for col in ["consumo", "energia_gerada", "consumo_especifico", "energia_geradores", "cons_esp_geradores"]:
             if col in df_exibir.columns:
                 df_exibir[col] = df_exibir[col].apply(lambda v: fmt_br(v, 2) if pd.notna(v) else "—")
-        nomes_col = {"data": "Data", "consumo": "Consumo (L)",
-                     "energia_gerada": "Energia Gerada (MWh)", "consumo_especifico": "Cons. Específico (L/MWh)"}
+
+        nomes_col = {
+            "data":               "Data",
+            "consumo":            "Consumo (L)",
+            "energia_gerada":     "Energia Gerada (MWh)",
+            "consumo_especifico": "Cons. Esp. Usina (L/MWh)",
+            "energia_geradores":  "Energia Geradores (MWh)",
+            "cons_esp_geradores": "Cons. Esp. Geradores (L/MWh)",
+        }
         df_exibir.columns = [nomes_col.get(c, c) for c in cols_exib]
         st.dataframe(df_exibir, use_container_width=True, hide_index=True)
 
@@ -571,7 +670,7 @@ def _render_resumo_html(resumo_data, title_prefix):
         estoque = fmt_br(info["estoque"], 0) if info["estoque"] is not None else "—"
 
         rows.append({
-            "Unidade":          nome,
+            "Unidade":            nome,
             "Volume Estoque (L)": estoque,
             "Horas de Operação":  horas,
             "Dias de Operação":   dias,
@@ -602,8 +701,8 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
     resumo_atual      = {}
     resumo_com_compra = {}
 
-    if 'autonomia_data_for_calc' not in st.session_state:
-        st.session_state['autonomia_data_for_calc'] = {}
+    if "autonomia_data_for_calc" not in st.session_state:
+        st.session_state["autonomia_data_for_calc"] = {}
 
     st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
@@ -612,11 +711,11 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
         icone             = UNIDADES[nome]["icone"]
         dias_antecedencia = cfg["dias_antecedencia"]
 
-        if nome not in st.session_state['autonomia_data_for_calc']:
-            st.session_state['autonomia_data_for_calc'][nome] = {
+        if nome not in st.session_state["autonomia_data_for_calc"]:
+            st.session_state["autonomia_data_for_calc"][nome] = {
                 "data_limite_total": None,
                 "vol_comprado": 0.0,
-                "estoque_atual_input": 0.0
+                "estoque_atual_input": 0.0,
             }
 
         if nome not in dados:
@@ -651,10 +750,10 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
 
         mc1, mc2, mc3 = st.columns(3)
         with mc1:
-            st.metric("⚡ Média Energia/dia",  f"{fmt_br(media_energia, 2)} MWh" if media_energia else "—")
+            st.metric("⚡ Média Energia/dia",     f"{fmt_br(media_energia, 2)} MWh" if media_energia else "—")
         with mc2:
             gerador_hora = (media_energia / 24) if media_energia else None
-            st.metric("🔧 Gerador/hora",        f"{fmt_br(gerador_hora, 4)} MWh/h" if gerador_hora else "—")
+            st.metric("🔧 Gerador/hora",           f"{fmt_br(gerador_hora, 4)} MWh/h" if gerador_hora else "—")
         with mc3:
             st.metric("🔢 Cons. Específico médio", f"{fmt_br(media_cesp, 2)} L/MWh" if media_cesp else "—")
 
@@ -716,7 +815,7 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
             "data_carga":  data_hora_carregamento_total,
         }
 
-        st.session_state['autonomia_data_for_calc'][nome] = {
+        st.session_state["autonomia_data_for_calc"][nome] = {
             "data_limite_total":   data_hora_limite_total,
             "vol_comprado":        vol_comprado,
             "estoque_atual_input": estoque_atual_input,
@@ -758,13 +857,13 @@ def calculadora(precos_carregados):
 
     resultados      = {}
     observacoes     = {}
-    datas_pagamento = {}  # ← datas manuais de pagamento por unidade
+    datas_pagamento = {}
 
-    autonomia_data    = st.session_state.get('autonomia_data_for_calc', {})
+    autonomia_data     = st.session_state.get("autonomia_data_for_calc", {})
     todas_datas_compra = []
 
     # ── Amajari ──────────────────────────────────────────────────────────
-    uk = "Amajari"
+    uk    = "Amajari"
     cor   = UNIDADES[uk]["cor"]
     icone = UNIDADES[uk]["icone"]
 
@@ -806,23 +905,27 @@ def calculadora(precos_carregados):
         )
     with c3:
         vol_default = autonomia_data.get(uk, {}).get("vol_comprado", 0.0)
-        vol = st.number_input("Volume (L)", min_value=0.0, step=1.0, format="%.0f",
-                              key=f"vol_{uk}", value=vol_default)
+        vol = st.number_input(
+            "Volume (L)", min_value=0.0, step=1.0, format="%.0f",
+            key=f"vol_{uk}", value=vol_default
+        )
     with c4:
-        preco = pd_planilha
-        total = preco * vol
+        preco_amajari = pd_planilha
+        total_amajari = preco_amajari * vol
         st.markdown(
             f"<div style='background:{cor}15; border:1px solid {cor}44; border-radius:10px; padding:10px 14px; margin-top:26px;'>"
             f"<div style='color:{cor}; font-size:11px; font-weight:600;'>PREÇO / LITRO</div>"
-            f"<div style='color:#e0e0f0; font-size:20px; font-weight:bold;'>R$ {fmt_br(preco, 4)}</div>"
+            f"<div style='color:#e0e0f0; font-size:20px; font-weight:bold;'>R$ {fmt_br(preco_amajari, 4)}</div>"
             f"<div style='color:{cor}; font-size:11px; font-weight:600; margin-top:8px;'>VALOR TOTAL</div>"
-            f"<div style='color:#e0e0f0; font-size:20px; font-weight:bold;'>R$ {fmt_br(total, 2)}</div>"
+            f"<div style='color:#e0e0f0; font-size:20px; font-weight:bold;'>R$ {fmt_br(total_amajari, 2)}</div>"
             f"</div>", unsafe_allow_html=True
         )
 
-    resultados[uk] = {"preco_litro": preco, "volume": vol, "valor_total": total,
-                      "preco_medio_planilha": pm_planilha, "preco_final_planilha": pf_planilha,
-                      "preco_desconto_planilha": pd_planilha, "plog_planilha": plog_planilha}
+    resultados[uk] = {
+        "preco_litro": preco_amajari, "volume": vol, "valor_total": total_amajari,
+        "preco_medio_planilha": pm_planilha, "preco_final_planilha": pf_planilha,
+        "preco_desconto_planilha": pd_planilha, "plog_planilha": plog_planilha,
+    }
 
     obs_col, date_col = st.columns([3, 1])
     with obs_col:
@@ -841,7 +944,7 @@ def calculadora(precos_carregados):
     st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
     # ── Pacaraima ────────────────────────────────────────────────────────
-    uk = "Pacaraima"
+    uk    = "Pacaraima"
     cor   = UNIDADES[uk]["cor"]
     icone = UNIDADES[uk]["icone"]
     st.markdown(
@@ -854,8 +957,8 @@ def calculadora(precos_carregados):
         ["Carga Completa", "Carga Parcial"], key="tipo_pacaraima_calc"
     )
 
-    chave_pac     = "Pacaraima_Completa" if tipo_pacaraima == "Carga Completa" else "Pacaraima_Parcial"
-    preco_info_p  = precos_carregados.get(chave_pac, {})
+    chave_pac             = "Pacaraima_Completa" if tipo_pacaraima == "Carga Completa" else "Pacaraima_Parcial"
+    preco_info_p          = precos_carregados.get(chave_pac, {})
     pm_p_planilha         = preco_info_p.get("preco_medio",    0.0)
     pf_p_planilha         = preco_info_p.get("preco_final",    0.0)
     pd_p_planilha         = preco_info_p.get("preco_desconto", 0.0)
@@ -907,12 +1010,12 @@ def calculadora(precos_carregados):
     resultados[f"{uk}_{tipo_pacaraima.replace(' ', '_')}"] = {
         "preco_litro": preco_pacaraima, "volume": volume_pacaraima, "valor_total": total_pacaraima,
         "preco_medio_planilha": pm_p_planilha, "preco_final_planilha": pf_p_planilha,
-        "preco_desconto_planilha": pd_p_planilha, "plog_planilha": plog_p_planilha
+        "preco_desconto_planilha": pd_p_planilha, "plog_planilha": plog_p_planilha,
     }
     vazio = {"preco_litro": 0.0, "volume": 0.0, "valor_total": 0.0,
              "preco_medio_planilha": 0.0, "preco_final_planilha": 0.0,
              "preco_desconto_planilha": 0.0, "plog_planilha": 0.0}
-    resultados["Pacaraima_Parcial"  if tipo_pacaraima == "Carga Completa" else "Pacaraima_Completa"] = vazio
+    resultados["Pacaraima_Parcial" if tipo_pacaraima == "Carga Completa" else "Pacaraima_Completa"] = vazio
 
     obs_col, date_col = st.columns([3, 1])
     with obs_col:
@@ -927,15 +1030,13 @@ def calculadora(precos_carregados):
 
     if uk in autonomia_data:
         dl = autonomia_data[uk].get("data_limite_total")
-
-
         if dl:
             todas_datas_compra.append(dl - timedelta(days=4))
 
     st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
     # ── Uiramutã ─────────────────────────────────────────────────────────
-    uk = "Uiramutã"
+    uk    = "Uiramutã"
     cor   = UNIDADES[uk]["cor"]
     icone = UNIDADES[uk]["icone"]
     st.markdown(
@@ -947,8 +1048,8 @@ def calculadora(precos_carregados):
         "Selecione o tipo para Uiramutã:", ["FOB", "CIF"], key="tipo_uiramuta_calc"
     )
 
-    chave_ui      = "Uiramutã_FOB" if tipo_uiramuta == "FOB" else "Uiramutã_CIF"
-    preco_info_u  = precos_carregados.get(chave_ui, {})
+    chave_ui              = "Uiramutã_FOB" if tipo_uiramuta == "FOB" else "Uiramutã_CIF"
+    preco_info_u          = precos_carregados.get(chave_ui, {})
     pm_u_planilha         = preco_info_u.get("preco_medio",    0.0)
     pf_u_planilha         = preco_info_u.get("preco_final",    0.0)
     pd_u_planilha         = preco_info_u.get("preco_desconto", 0.0)
@@ -1000,7 +1101,7 @@ def calculadora(precos_carregados):
     resultados[f"{uk}_{tipo_uiramuta}"] = {
         "preco_litro": preco_uiramuta, "volume": volume_uiramuta, "valor_total": total_uiramuta,
         "preco_medio_planilha": pm_u_planilha, "preco_final_planilha": pf_u_planilha,
-        "preco_desconto_planilha": pd_u_planilha, "plog_planilha": plog_u_planilha
+        "preco_desconto_planilha": pd_u_planilha, "plog_planilha": plog_u_planilha,
     }
     vazio = {"preco_litro": 0.0, "volume": 0.0, "valor_total": 0.0,
              "preco_medio_planilha": 0.0, "preco_final_planilha": 0.0,
@@ -1052,8 +1153,6 @@ def calculadora(precos_carregados):
             return dt.strftime("%d/%m/%Y") if dt else "—"
 
         rows = []
-
-        # Amajari
         rows.append({
             "Unidade":            "Amajari",
             "Tipo":               "Padrão",
@@ -1065,7 +1164,6 @@ def calculadora(precos_carregados):
             "Observação":         observacoes.get("Amajari", "—"),
         })
 
-        # Pacaraima
         key_pac = f"Pacaraima_{tipo_pacaraima.replace(' ', '_')}"
         rows.append({
             "Unidade":            "Pacaraima",
@@ -1078,7 +1176,6 @@ def calculadora(precos_carregados):
             "Observação":         observacoes.get("Pacaraima", "—"),
         })
 
-        # Uiramutã
         key_ui = f"Uiramutã_{tipo_uiramuta}"
         rows.append({
             "Unidade":            "Uiramutã",
@@ -1091,7 +1188,6 @@ def calculadora(precos_carregados):
             "Observação":         observacoes.get("Uiramutã", "—"),
         })
 
-        # Linha total
         rows.append({
             "Unidade":            "TOTAL",
             "Tipo":               "—",
@@ -1128,8 +1224,8 @@ def aba_compra_combustivel(df_notas, tipo_filtro, periodo_sel):
         st.warning(f"Não há dados de compra de combustível para o período selecionado ({periodo_sel}).")
         return
 
-    localidades_unicas      = ["Todas"] + sorted(df_filtrado_periodo["localidade"].unique().tolist())
-    localidade_selecionada  = st.selectbox("Filtrar por Localidade:", localidades_unicas, key="filtro_localidade_notas")
+    localidades_unicas     = ["Todas"] + sorted(df_filtrado_periodo["localidade"].unique().tolist())
+    localidade_selecionada = st.selectbox("Filtrar por Localidade:", localidades_unicas, key="filtro_localidade_notas")
 
     df_final = df_filtrado_periodo.copy()
     if localidade_selecionada != "Todas":
@@ -1152,10 +1248,10 @@ def aba_compra_combustivel(df_notas, tipo_filtro, periodo_sel):
     st.markdown("### Detalhes das Compras")
 
     df_exibir = df_final.copy()
-    df_exibir["data"]             = df_exibir["data"].dt.strftime("%d/%m/%Y")
-    df_exibir["qtd_combustivel"]  = df_exibir["qtd_combustivel"].apply(lambda v: fmt_br(v, 0))
-    df_exibir["valor_total_nota"] = df_exibir["valor_total_nota"].apply(lambda v: fmt_br(v, 2))
-    df_exibir["preco_combustivel"]= df_exibir["preco_combustivel"].apply(lambda v: fmt_br(v, 4))
+    df_exibir["data"]              = df_exibir["data"].dt.strftime("%d/%m/%Y")
+    df_exibir["qtd_combustivel"]   = df_exibir["qtd_combustivel"].apply(lambda v: fmt_br(v, 0))
+    df_exibir["valor_total_nota"]  = df_exibir["valor_total_nota"].apply(lambda v: fmt_br(v, 2))
+    df_exibir["preco_combustivel"] = df_exibir["preco_combustivel"].apply(lambda v: fmt_br(v, 4))
 
     df_exibir.rename(columns={
         "data":             "Data Emissão",
@@ -1198,7 +1294,7 @@ def main():
             for e in erros:
                 st.warning(e)
 
-    periodo_sel     = None
+    periodo_sel      = None
     df_para_periodos = None
 
     if df_notas_combustivel is not None and not df_notas_combustivel.empty:
