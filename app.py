@@ -4,7 +4,9 @@ import plotly.graph_objects as go
 import requests
 import io
 import unicodedata
+import calendar
 from datetime import date, timedelta, datetime
+from zoneinfo import ZoneInfo
 
 LINK_ENERGIA = "https://usinaxavantes-my.sharepoint.com/:x:/g/personal/jefferson_ferreira_usinaxavantes_onmicrosoft_com/IQDdqWDpJPZzS5sWsTULHWMPAaPbvF6rFiA99uybNJx7zh4?e=iDHkEG"
 LINK_CONSUMO = "https://usinaxavantes-my.sharepoint.com/:x:/g/personal/jefferson_ferreira_usinaxavantes_onmicrosoft_com/IQDKVJdv3LvzQY4AjhJiPbiZAYzb7lg5BPZK9-O52ctFqq4?e=RboNX9"
@@ -66,6 +68,45 @@ st.markdown("""
     .total-box h2 { color: white !important; margin: 0; font-size: 32px; }
     .total-box p { color: rgba(255,255,255,0.75) !important; margin: 4px 0 0 0; font-size: 13px; }
     .block-container { padding-top: 1.5rem; }
+
+    /* ── Calendário: legendas, botões e popover do lápis ── */
+    [data-testid="stCaptionContainer"] { color: #c4c4dd !important; font-size: 14px !important; }
+    [data-testid="stCaptionContainer"] * { color: #c4c4dd !important; }
+
+    .stButton > button,
+    .stDownloadButton > button {
+        background-color: #2a2a3e !important; border: 1px solid #5c52c8 !important;
+        border-radius: 10px !important; padding: 8px 16px !important;
+    }
+    .stButton > button p,
+    .stDownloadButton > button p { color: #f0f0ff !important; font-size: 14px !important; font-weight: 600 !important; }
+    .stButton > button:hover,
+    .stDownloadButton > button:hover { background-color: #5c52c8 !important; border-color: #7c6af7 !important; }
+    .stButton > button:hover p,
+    .stDownloadButton > button:hover p { color: #ffffff !important; }
+
+    [data-testid="stPopover"] > button,
+    [data-testid="stPopoverButton"] {
+        background-color: #2a2a3e !important; border: 1px solid #5c52c8 !important;
+        border-radius: 8px !important;
+    }
+    [data-testid="stPopover"] > button p,
+    [data-testid="stPopoverButton"] p { color: #f0f0ff !important; font-size: 13px !important; font-weight: 600 !important; }
+    [data-testid="stPopover"] > button:hover,
+    [data-testid="stPopoverButton"]:hover { background-color: #5c52c8 !important; border-color: #7c6af7 !important; }
+
+    [data-testid="stPopoverBody"] {
+        background-color: #1e1e2e !important; border: 1px solid #5c52c8 !important;
+        border-radius: 12px !important;
+    }
+    [data-testid="stPopoverBody"] p,
+    [data-testid="stPopoverBody"] label { color: #f0f0ff !important; }
+    [data-testid="stPopoverBody"] [data-baseweb="input"],
+    [data-testid="stPopoverBody"] [data-baseweb="base-input"] { background-color: #0f0f1a !important; border-color: #7c6af7 !important; }
+    [data-testid="stPopoverBody"] input { background-color: #0f0f1a !important; color: #ffffff !important; }
+    [data-testid="stPopoverBody"] [data-testid="stNumberInput"] button {
+        background-color: #2a2a3e !important; color: #f0f0ff !important; border-color: #3a3a5a !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -80,6 +121,23 @@ COR_ENERGIA      = "#facc15"
 COR_CONS_ESP_GER = "#a78bfa"
 DESCONTO         = 1.0530
 BOMBEAMENTO      = 0.135
+
+# Fuso horário de Roraima (evita usar o horário do servidor)
+TZ = ZoneInfo("America/Boa_Vista")
+
+# Limites do semáforo do calendário (em dias de autonomia), por unidade
+LIMITES_AUTONOMIA = {
+    "Amajari":   {"critico": 3.0, "atencao": 5.0},
+    "Pacaraima": {"critico": 3.0, "atencao": 5.0},
+    "Uiramutã":  {"critico": 3.0, "atencao": 5.0},
+}
+
+CORES_STATUS = {
+    "ok":              "#22c55e",
+    "atencao":         "#facc15",
+    "critico":         "#ef4444",
+    "sem_combustivel": "#9f1239",
+}
 
 
 def fmt_br(valor, decimais=0):
@@ -610,7 +668,7 @@ def calcular_autonomia(estoque, estoque_geradores, media_energia, cons_esp, usar
 
     gerador_dia = media_energia / 24
     if gerador_dia == 0:
-        return 0.0, 0.0, datetime.now()
+        return 0.0, 0.0, datetime.now(TZ)
 
     horas_operacao = (estoque / cons_esp) / gerador_dia
     if usar_seguranca:
@@ -619,9 +677,9 @@ def calcular_autonomia(estoque, estoque_geradores, media_energia, cons_esp, usar
     dias_operacao  = horas_operacao / 24
 
     if horas_operacao == 0:
-        return 0.0, 0.0, datetime.now()
+        return 0.0, 0.0, datetime.now(TZ)
 
-    data_hora_limite = datetime.now() + timedelta(hours=horas_operacao)
+    data_hora_limite = datetime.now(TZ) + timedelta(hours=horas_operacao)
     return horas_operacao, dias_operacao, data_hora_limite
 
 
@@ -686,7 +744,7 @@ def _render_resumo_html(resumo_data, title_prefix):
     st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
 
-def aba_autonomia(dados, tipo_filtro, periodo_sel):
+def _conteudo_resumo(dados, tipo_filtro, periodo_sel, entradas):
     st.markdown("## 🛢️ Autonomia de Combustível")
     st.markdown(
         f"<p style='color:#8888aa; font-size:13px; margin-top:-10px;'>"
@@ -724,6 +782,7 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
                 "estoque": 0.0, "horas": None, "dias": None,
                 "data_limite": None, "data_carga": None,
             }
+            entradas[nome] = {"estoque": 0.0, "vol_comprado": 0.0, "consumo_dia": 0.0}
             continue
 
         df_f = filtrar(dados[nome], tipo_filtro, periodo_sel)
@@ -733,12 +792,16 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
                 "estoque": 0.0, "horas": None, "dias": None,
                 "data_limite": None, "data_carga": None,
             }
+            entradas[nome] = {"estoque": 0.0, "vol_comprado": 0.0, "consumo_dia": 0.0}
             continue
 
         tem_energia = "energia_gerada"     in df_f.columns and df_f["energia_gerada"].notna().any()
         tem_cesp    = "consumo_especifico" in df_f.columns and df_f["consumo_especifico"].notna().any()
         media_energia = float(df_f["energia_gerada"].mean())     if tem_energia else 0.0
         media_cesp    = float(df_f["consumo_especifico"].mean()) if tem_cesp    else 0.0
+
+        tem_consumo_df    = "consumo" in df_f.columns and df_f["consumo"].notna().any()
+        media_consumo_dia = float(df_f["consumo"].mean()) if tem_consumo_df else 0.0
 
         st.markdown(
             f"<span class='badge-unidade' style='background:{cor}22; color:{cor}; border:1px solid {cor}44;'>"
@@ -821,6 +884,13 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
             "estoque_atual_input": estoque_atual_input,
         }
 
+        # Valores compartilhados com a subaba "Calendário de Estoque"
+        entradas[nome] = {
+            "estoque":      estoque_atual_input,
+            "vol_comprado": vol_comprado,
+            "consumo_dia":  media_consumo_dia,
+        }
+
         st.markdown(
             card_autonomia("📊 Cenário atual — somente estoque",
                            horas_atual, dias_atual, cor,
@@ -839,6 +909,328 @@ def aba_autonomia(dados, tipo_filtro, periodo_sel):
         _render_resumo_html(resumo_atual,      "Resumo — Cenário Atual (somente estoque)")
     if resumo_com_compra:
         _render_resumo_html(resumo_com_compra, "Resumo — Cenário com Compra (estoque + volume comprado)")
+
+
+# ─────────────────────────────────────────
+# CALENDÁRIO DE ESTOQUE
+# ─────────────────────────────────────────
+def classificar_autonomia(dias, critico, atencao):
+    if dias <= 0:
+        return "sem_combustivel"
+    if dias < critico:
+        return "critico"
+    if dias <= atencao:
+        return "atencao"
+    return "ok"
+
+
+MESES_PT = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+            "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+
+
+def projetar_calendario(estoque, consumo_dia, inicio, horizonte,
+                        recebimentos=None, critico=3.0, atencao=5.0):
+    """recebimentos: dict {date: litros}."""
+    if consumo_dia is None or consumo_dia <= 0:
+        return pd.DataFrame()
+
+    recebimentos = recebimentos or {}
+    linhas = []
+    saldo = float(estoque)
+    dia0 = inicio.date()
+    fracao_dia0 = (24 - (inicio.hour + inicio.minute / 60)) / 24
+
+    for i in range(horizonte):
+        dia = dia0 + timedelta(days=i)
+
+        receb = float(recebimentos.get(dia, 0.0))
+        saldo += receb
+
+        autonomia = saldo / consumo_dia
+        linhas.append({
+            "data": dia,
+            "volume_l": saldo,
+            "recebimento_l": receb,
+            "autonomia_dias": autonomia,
+            "status": classificar_autonomia(autonomia, critico, atencao),
+        })
+
+        saldo = max(saldo - consumo_dia * (fracao_dia0 if i == 0 else 1.0), 0.0)
+
+    return pd.DataFrame(linhas)
+
+
+def _meses_disponiveis(hoje, qtd=2):
+    """Lista de (ano, mes) começando no mês de 'hoje'. Aumente 'qtd' para mais meses."""
+    meses = []
+    ref = hoje.replace(day=1)
+    for _ in range(qtd):
+        meses.append((ref.year, ref.month))
+        ref = (ref + timedelta(days=32)).replace(day=1)
+    return meses
+
+
+def _salvar_receb(nome, dia, wkey):
+    """Callback: grava (ou remove) o recebimento simulado de um dia."""
+    v = float(st.session_state.get(wkey) or 0.0)
+    sim = st.session_state.setdefault("sim_receb", {})
+    if v > 0:
+        sim[(nome, dia)] = v
+    else:
+        sim.pop((nome, dia), None)
+
+
+def _limpar_receb(nome):
+    """Callback: remove todas as simulações de uma unidade."""
+    sim = st.session_state.setdefault("sim_receb", {})
+    for (n, d) in list(sim.keys()):
+        if n == nome:
+            sim.pop((n, d), None)
+            st.session_state.pop(f"rec_{n}_{d.isoformat()}", None)
+
+
+def _chip_legenda(cor, texto):
+    """Item de legenda com bolinha colorida e texto bem legível."""
+    return (
+        "<span style='display:inline-flex; align-items:center; gap:8px; "
+        "background:#1e1e2e; border:1px solid #3a3a5a; border-radius:8px; "
+        "padding:6px 12px; margin:4px 8px 4px 0; color:#f0f0ff; "
+        "font-size:14px; font-weight:600;'>"
+        f"<span style='display:inline-block; width:12px; height:12px; "
+        f"border-radius:50%; background:{cor};'></span>{texto}</span>"
+    )
+
+
+def render_calendario_interativo(nome, df_mes, primeiro, ultimo, hoje, critico, atencao):
+    if df_mes is None or df_mes.empty:
+        st.info("Informe o estoque na subaba Resumo para gerar o calendário.")
+        return
+
+    sim = st.session_state.setdefault("sim_receb", {})
+    por_dia = {r["data"]: r for r in df_mes.to_dict("records")}
+
+    # Cabeçalho dos dias da semana
+    dias_sem = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
+    cab = st.columns(7)
+    for c, d in zip(cab, dias_sem):
+        c.markdown(
+            f"<div style='text-align:center; color:#c4c4dd; font-size:13px; "
+            f"font-weight:700;'>{d}</div>",
+            unsafe_allow_html=True,
+        )
+
+    # Mês inteiro (semana começa no domingo)
+    datas = [primeiro + timedelta(days=i) for i in range(ultimo.day)]
+    offset = (primeiro.weekday() + 1) % 7
+    celulas = [None] * offset + datas
+    while len(celulas) % 7 != 0:
+        celulas.append(None)
+
+    for ini in range(0, len(celulas), 7):
+        cols = st.columns(7)
+        for col, dia in zip(cols, celulas[ini:ini + 7]):
+            if dia is None:
+                continue
+
+            with col:
+                r = por_dia.get(dia)
+
+                # Dia que já passou: apagado e sem edição
+                if r is None:
+                    st.markdown(
+                        f"<div style='border:1px dashed #55556e; border-radius:10px; "
+                        f"padding:8px; min-height:84px; opacity:0.55;'>"
+                        f"<div style='color:#c4c4dd; font-size:12px;'>{dia:%d/%m}</div></div>",
+                        unsafe_allow_html=True,
+                    )
+                    continue
+
+                cor = CORES_STATUS[r["status"]]
+                tem_receb = r["recebimento_l"] > 0
+                icone = " 📦" if tem_receb else ""
+                marca_hoje = " · hoje" if dia == hoje else ""
+                receb_html = (
+                    f"<div style='color:#ffffff; font-size:12px; font-weight:600;'>+{fmt_br(r['recebimento_l'], 0)} L</div>"
+                    if tem_receb else ""
+                )
+                st.markdown(
+                    f"<div style='background:{cor}22; border:1px solid {cor}; border-radius:10px; "
+                    f"padding:8px; min-height:84px;'>"
+                    f"<div style='color:#d4d4ec; font-size:12px; font-weight:600;'>{dia:%d/%m}{marca_hoje}{icone}</div>"
+                    f"<div style='color:#ffffff; font-size:15px; font-weight:700;'>{fmt_br(r['volume_l'], 0)} L</div>"
+                    f"<div style='color:{cor}; font-size:12px; font-weight:700;'>{fmt_br(r['autonomia_dias'], 1)} dias</div>"
+                    f"{receb_html}</div>",
+                    unsafe_allow_html=True,
+                )
+
+                wkey = f"rec_{nome}_{dia.isoformat()}"
+                atual = float(sim.get((nome, dia), 0.0))
+                with st.popover(f"✏️ {dia:%d/%m}", use_container_width=True):
+                    st.markdown(f"**{dia:%d/%m/%Y}**")
+                    st.caption(
+                        f"Estoque projetado: {fmt_br(r['volume_l'], 0)} L "
+                        f"({fmt_br(r['autonomia_dias'], 1)} dias)"
+                    )
+                    st.number_input(
+                        "Combustível a receber (L)",
+                        min_value=0.0, step=1000.0, format="%.0f",
+                        value=atual, key=wkey,
+                        on_change=_salvar_receb, args=(nome, dia, wkey),
+                        help="Digite 0 para remover o recebimento deste dia.",
+                    )
+
+    # Legenda em chips, com texto maior e mais claro
+    chips = "".join([
+        _chip_legenda(CORES_STATUS["ok"],              f"Acima de {fmt_br(atencao, 0)} dias"),
+        _chip_legenda(CORES_STATUS["atencao"],         f"De {fmt_br(critico, 0)} a {fmt_br(atencao, 0)} dias"),
+        _chip_legenda(CORES_STATUS["critico"],         f"Abaixo de {fmt_br(critico, 0)} dias"),
+        _chip_legenda(CORES_STATUS["sem_combustivel"], "Sem combustível"),
+        _chip_legenda("#5c52c8",                       "📦 Recebimento simulado"),
+    ])
+    st.markdown(
+        f"<div style='display:flex; flex-wrap:wrap; margin-top:14px;'>{chips}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _calendario_unidade(nome, e, hoje):
+    if not e or not e["consumo_dia"] or e["estoque"] <= 0:
+        st.info(f"{nome}: informe o estoque atual na subaba Resumo.")
+        return
+
+    # Garante que 'hoje' seja um date (datetime é subclasse de date, por isso testa primeiro)
+    if isinstance(hoje, datetime):
+        hoje = hoje.date()
+
+    # Seletor de mês: atual e seguinte
+    meses = _meses_disponiveis(hoje, qtd=2)
+    idx = st.radio(
+        "Mês",
+        options=list(range(len(meses))),
+        format_func=lambda i: f"{MESES_PT[meses[i][1] - 1]}/{meses[i][0]}"
+                              + (" (atual)" if i == 0 else ""),
+        horizontal=True,
+        key=f"cal_mes_{nome}",
+    )
+    ano, mes = meses[idx]
+    primeiro = hoje.replace(year=ano, month=mes, day=1)
+    ultimo = primeiro.replace(day=calendar.monthrange(ano, mes)[1])
+
+    # A projeção sempre parte de hoje e vai até o fim do mês selecionado
+    horizonte = (ultimo - hoje).days + 1
+
+    sim = st.session_state.setdefault("sim_receb", {})
+    recebimentos = {d: v for (n, d), v in sim.items() if n == nome and hoje <= d <= ultimo}
+    total_mes = sum(v for d, v in recebimentos.items() if primeiro <= d <= ultimo)
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Consumo médio", f"{fmt_br(e['consumo_dia'], 0)} L/dia")
+    with c2:
+        st.metric(
+            "Volume total de combustível", f"{fmt_br(e['estoque'], 0)} L",
+            help="Estoque atual informado na subaba Resumo.",
+        )
+    with c3:
+        st.metric(
+            "Recebimentos simulados no mês", f"{fmt_br(total_mes, 0)} L",
+            help="Soma dos recebimentos lançados no mês exibido.",
+        )
+
+    st.markdown(
+        "<p style='color:#d4d4ec; font-size:14px; margin:8px 0 12px 0;'>"
+        "Clique em ✏️ abaixo do dia desejado para informar o combustível a receber naquela data.</p>",
+        unsafe_allow_html=True,
+    )
+
+    lim = LIMITES_AUTONOMIA[nome]
+    df_cal = projetar_calendario(
+        e["estoque"], e["consumo_dia"], datetime.now(TZ), horizonte,
+        recebimentos, lim["critico"], lim["atencao"],
+    )
+
+    if df_cal.empty:
+        st.info(f"{nome}: não foi possível gerar a projeção. Confira o consumo médio no Resumo.")
+        return
+
+    # Apenas os dias do mês selecionado
+    mask = df_cal["data"].map(lambda d: primeiro <= d <= ultimo)
+    df_mes = df_cal[mask].reset_index(drop=True)
+
+    render_calendario_interativo(nome, df_mes, primeiro, ultimo, hoje, lim["critico"], lim["atencao"])
+
+    # Alertas de mudança de status, em destaque
+    for status, rotulo in [("atencao", "Entra em atenção"),
+                           ("critico", "Entra em crítico"),
+                           ("sem_combustivel", "Estoque zera")]:
+        s = df_cal[df_cal["status"] == status]
+        if not s.empty:
+            cor_s = CORES_STATUS[status]
+            st.markdown(
+                f"<div style='border-left:5px solid {cor_s}; background:{cor_s}1f; "
+                f"border-radius:6px; padding:8px 14px; margin:6px 0; color:#f0f0ff; "
+                f"font-size:14px;'>{rotulo} em <b>{s['data'].iloc[0]:%d/%m/%Y}</b></div>",
+                unsafe_allow_html=True,
+            )
+
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+
+    csv_df = pd.DataFrame({
+        "Data": df_mes["data"].map(lambda d: d.strftime("%d/%m/%Y")),
+        "Volume inserido (L)": df_mes["recebimento_l"].round(0).astype(int),
+    })
+    csv_bytes = csv_df.to_csv(index=False, sep=";").encode("utf-8-sig")
+
+    b1, b2, _ = st.columns([1, 1, 2])
+    with b1:
+        st.button(
+            "🧹 Limpar simulações desta usina",
+            key=f"cal_limpar_{nome}",
+            on_click=_limpar_receb, args=(nome,),
+            use_container_width=True,
+        )
+    with b2:
+        st.download_button(
+            "⬇️ Baixar resumo em CSV",
+            data=csv_bytes,
+            file_name=f"simulacao_{nome}_{ano}{mes:02d}.csv",
+            mime="text/csv",
+            key=f"cal_csv_{nome}",
+            use_container_width=True,
+        )
+
+
+def aba_calendario_estoque(entradas):
+    st.markdown("## 📅 Calendário de Estoque")
+    st.markdown(
+        "<p style='color:#8888aa; font-size:13px; margin-top:-10px;'>"
+        "Volume projetado dia a dia, usando o consumo médio diário do período selecionado. "
+        "O estoque vem da subaba Resumo. Use o volume simulado para testar compras adicionais.</p>",
+        unsafe_allow_html=True,
+    )
+
+    if not entradas:
+        st.warning("Selecione um período na sidebar para gerar o calendário.")
+        return
+
+    hoje = datetime.now(TZ).date()
+    nomes = list(UNIDADES.keys())
+    rotulos = [f"{UNIDADES[n]['icone']} {n}" for n in nomes]
+
+    for nome, tab in zip(nomes, st.tabs(rotulos)):
+        with tab:
+            _calendario_unidade(nome, entradas.get(nome), hoje)
+
+
+def aba_autonomia(dados, tipo_filtro, periodo_sel):
+    entradas = {}
+    sub_resumo, sub_cal = st.tabs(["📋 Resumo", "📅 Calendário de Estoque"])
+
+    with sub_resumo:
+        _conteudo_resumo(dados, tipo_filtro, periodo_sel, entradas)
+
+    with sub_cal:
+        aba_calendario_estoque(entradas)
 
 
 # ─────────────────────────────────────────
@@ -1273,7 +1665,9 @@ def main():
         st.markdown("## ⚡ Painel Energético")
         st.markdown("---")
         st.markdown("**Filtrar por:**")
-        tipo_filtro = st.radio("", ["Ano", "Mês", "Semana"], index=1, label_visibility="collapsed")
+        tipo_filtro = st.radio(
+            "Filtrar por", ["Ano", "Mês", "Semana"], index=1, label_visibility="collapsed"
+        )
         if st.button("🔄 Recarregar dados"):
             st.cache_data.clear()
             st.rerun()
